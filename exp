@@ -1,0 +1,135 @@
+1) Imports
+
+airflow, task: build a DAG and TaskFlow-style tasks.
+
+S3Hook: simple way to read/write S3 using an Airflow connection.
+
+datetime/timedelta: scheduling defaults.
+
+subprocess, sys, json, os, pathlib: run your Python script and work with paths/files.
+
+2) Defaults (default_args)
+
+Owner = "data-platform".
+
+If a task fails, Airflow retries once after 5 minutes.
+
+3) DAG definition (with DAG(... ) as dag:)
+
+dag_id="etl_analytics_pipeline": the name you’ll see in the Airflow UI.
+
+start_date=datetime(2024, 1, 1), catchup=False: no backfills; runs only from now on.
+
+schedule="@daily": one run per day.
+
+params: overridable inputs for each run:
+
+config_s3_uri: where the JSON config lives in S3.
+
+output_s3_uri: where to upload results; uses {{ ds }} (execution date) templating.
+
+job_name: passed to your runner.
+
+You can override any of these when you trigger the DAG.
+
+4) fetch_config task
+
+Creates an S3 client via S3Hook(aws_conn_id="aws_default").
+
+Splits s3://bucket/key.json into bucket + key.
+
+Downloads the config to /tmp/<filename>.json.
+
+Returns the local path (this value is stored in XCom and fed to the next task).
+
+Requirements: The aws_default Airflow connection (or instance role) must authorize S3 read.
+
+5) run_extractor task
+
+Points runner to your repo script: scripts/run_analytics_job/run_analytics_job.py.
+
+Builds a command:
+python <runner> -config_file <downloaded_config> -job_name <job_name>.
+
+Executes it with subprocess.run(..., check=True) (fails the task if the exit code ≠ 0).
+
+Returns a directory path that the next steps treat as the local output root (/opt/airflow/output in this draft—change this to whatever your script actually writes to).
+
+Knob: If your runner writes somewhere else (e.g., derives a path from the JSON), set the actual output path here.
+
+6) dq_checks task
+
+Recursively lists all files under output_dir.
+
+If no files are found, raises an error → the run fails early.
+
+Returns the file count (handy in logs/metrics).
+
+7) upload_outputs task
+
+Creates an S3 client again via S3Hook.
+
+Splits output_s3_uri into bucket + prefix.
+
+Walks every file under output_dir and uploads each to s3://bucket/<prefix>/<filename>.
+
+Uses hook.load_file(..., replace=True) to overwrite if it already exists.
+
+Note: As written, it flattens the structure—only the base filename is preserved.
+If you want to keep subfolders, change the key to use the relative path:
+
+for f in pathlib.Path(output_dir).rglob("*"):
+    if f.is_file():
+        rel = f.relative_to(output_dir)
+        key = f"{prefix.rstrip('/')}/{rel.as_posix()}"
+        hook.load_file(str(f), key, bucket_name=bucket, replace=True)
+
+8) Task wiring (the bottom four lines)
+cfg = fetch_config(dag.params["config_s3_uri"])
+out_dir = run_extractor(cfg, dag.params["job_name"])
+_dq = dq_checks(out_dir)
+upload_outputs(out_dir, dag.params["output_s3_uri"])
+
+
+This is the execution chain and how data flows:
+
+cfg = fetch_config(...)
+
+Calls the fetch_config task with the S3 URI from params.
+
+Returns the local file path (via XCom) → stored in cfg.
+
+out_dir = run_extractor(cfg, ...)
+
+Passes that local config path (cfg) and job_name into your runner.
+
+Your script runs.
+
+Returns the output directory path your next tasks should use.
+
+_dq = dq_checks(out_dir)
+
+Uses the output dir to verify there’s at least one file.
+
+upload_outputs(out_dir, ...)
+
+Uses the same output dir and the destination S3 URI from params to upload every file.
+
+Airflow automatically understands these dependencies because each task consumes the return value of the previous task. Visual graph:
+fetch_config → run_extractor → dq_checks → upload_outputs
+
+Quick sanity checklist
+
+Make sure aws_default is set (UI → Admin → Connections) or use an IAM role.
+
+Ensure runner path is correct inside the Airflow worker/container.
+
+Update the run_extractor return value to the real local output directory if needed.
+
+If outputs go directly to S3 inside your runner (no local files), you can:
+
+Skip upload_outputs, or
+
+Change dq_checks to check S3 instead of local disk.
+
+If you paste logs/errors, I’ll point out exactly which line to tweak.
