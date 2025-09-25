@@ -136,3 +136,11 @@ rm vscode-server.tar.gz
 
 
 Then reconnect from VS Code.
+#########################################################
+commit=$(curl -s https://update.code.visualstudio.com/1.74.3/server-linux-x64/stable/product.json | grep -oP '"commit":\s*"\K[^"]+')
+mkdir -p ~/.vscode-server/bin/$commit
+cd ~/.vscode-server/bin/$commit
+curl -L "https://update.code.visualstudio.com/1.74.3/server-linux-x64/stable" -o vscode-server.tar.gz
+tar --strip-components 1 -xzf vscode-server.tar.gz
+rm vscode-server.tar.gz
+
