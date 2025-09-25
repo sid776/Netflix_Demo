@@ -31,6 +31,87 @@ Select Linux
 VS Code should now find the server in ~/.vscode-server/bin/COMMIT_HASH and connect (no prereq popup).
 
 Replace COMMIT_HASH above with the exact one you copied from Help → About.
+##################################################################################
+Great progress — your screenshots show:
+
+VS Code client 1.104.1
+
+Commit 0f0d87fa9e96c856c5212fc86db137ac0d783365
+
+You extracted the server into:
+~/.vscode-server/bin/0f0d87fa9e96c856c5212fc86db137ac0d783365
+
+That’s exactly right. Now do this to finish and connect.
+
+1) Make sure the server folder is complete & readable
+
+On TREX:
+
+ls -la ~/.vscode-server/bin/0f0d87fa9e96c856c5212fc86db137ac0d783365
+# you should see: bin/ extensions/ node/ product.json package.json LICENSE …
+
+# just in case, ensure perms for your user
+chmod -R u+rwX ~/.vscode-server
+
+2) (Recommended on corp networks) Set env so the server knows your proxy
+
+Create the optional env file VS Code reads on startup:
+
+cat > ~/.vscode-server/server-env-setup <<'EOF'
+export http_proxy="http://proxy.cat.com:80"
+export https_proxy="$http_proxy"
+export HTTP_PROXY="$http_proxy"
+export HTTPS_PROXY="$http_proxy"
+EOF
+
+3) Quick self-test that the server binaries run
+
+Still on TREX:
+
+~/.vscode-server/bin/0f0d87fa9e96c856c5212fc86db137ac0d783365/bin/code-server --help | head -n 5
+
+
+If you see usage/help text, the binaries link fine (glibc/libstdc++ are OK).
+
+4) Reconnect from VS Code (no full app restart needed)
+
+In VS Code on your laptop: bottom-left green corner → Close Remote Connection (if connected/error dialog is open).
+
+Then green corner → Connect to Host… → jenas7@10.224.82.10
+
+Choose Linux.
+
+VS Code should detect the preinstalled server in the commit folder and connect (skips the prereq check).
+
+If it still pops the “prerequisites” error
+
+Try these small tweaks (in order):
+
+Force a fresh handshake
+
+rm -rf ~/.vscode-server/.tmp
+
+
+Then disconnect/reconnect from VS Code again.
+
+Show the login terminal & avoid local server (on your laptop VS Code):
+
+File → Preferences → Settings → search “Remote SSH”
+
+Set Remote.SSH: Show Login Terminal = On
+
+Set Remote.SSH: Use Local Server = Off
+Re-try connection (you’ll see more logs; if there’s a path/perm issue we’ll catch it).
+
+Manually launch once to warm up caches (on TREX):
+
+~/.vscode-server/bin/0f0d87fa9e96c856c5212fc86db137ac0d783365/bin/code-server \
+  --telemetry-level off --compatibility=1 --host 127.0.0.1 --port 0
+
+
+(Then Ctrl+C.) Now reconnect from VS Code.
+
+If it still fails, paste the first 30 lines from the Remote-SSH “Output” log in VS Code (View → Output → dropdown: “Remote - SSH”). That will tell us exactly what it’s unhappy about (wrong path, perms, proxy, etc.), and I’ll pinpoint the next one-liner to fix it.
 
 Option B — If you must use TREX and a proxy
 
