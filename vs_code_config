@@ -1,0 +1,57 @@
+1) Get the commit hash from your local VS Code
+
+In VS Code: Help → About
+
+Copy the value labeled Commit (a long hex string).
+Let’s call it: COMMIT_HASH
+
+2) Download the server tarball on your laptop
+
+Open PowerShell:
+
+$version = "1.104.1"
+$tarPath = "$env:USERPROFILE\Downloads\vscode-server-$version-linux-x64.tar.gz"
+Invoke-WebRequest -Uri "https://update.code.visualstudio.com/$version/server-linux-x64/stable" -OutFile $tarPath
+
+3) Copy it to TREX and place it where VS Code expects
+# make the commit directory on TREX
+ssh jenas7@10.224.82.10 "mkdir -p ~/.vscode-server/bin/COMMIT_HASH"
+
+# copy the tarball up
+scp "$tarPath" jenas7@10.224.82.10:~/.vscode-server/bin/COMMIT_HASH/vscode-server.tar.gz
+
+4) Extract it on TREX
+ssh jenas7@10.224.82.10 "cd ~/.vscode-server/bin/COMMIT_HASH && tar --strip-components 1 -xzf vscode-server.tar.gz && rm vscode-server.tar.gz"
+
+5) Connect from VS Code
+
+Green button (bottom-left) → Connect to Host… → jenas7@10.224.82.10
+
+Select Linux
+VS Code should now find the server in ~/.vscode-server/bin/COMMIT_HASH and connect (no prereq popup).
+
+Replace COMMIT_HASH above with the exact one you copied from Help → About.
+
+Option B — If you must use TREX and a proxy
+
+If TREX needs a proxy, set it for the session and try again (don’t hide errors with -s):
+
+# on TREX
+export http_proxy="http://proxy.cat.com:80"
+export https_proxy="$http_proxy"
+export HTTP_PROXY="$http_proxy"
+export HTTPS_PROXY="$http_proxy"
+
+# test connectivity
+curl -vI https://update.code.visualstudio.com/
+
+# fetch commit and install
+commit=$(curl -s https://update.code.visualstudio.com/1.104.1/server-linux-x64/stable/product.json | grep -oP '"commit":\s*"\K[^"]+')
+mkdir -p ~/.vscode-server/bin/$commit
+cd ~/.vscode-server/bin/$commit
+curl -L "https://update.code.visualstudio.com/1.104.1/server-linux-x64/stable" -o vscode-server.tar.gz
+tar --strip-components 1 -xzf vscode-server.tar.gz
+rm vscode-server.tar.gz
+
+
+Then reconnect from VS Code.
