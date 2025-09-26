@@ -267,3 +267,43 @@ If it does complain about GLIBC_2.28 (likely), downgrade your local VS Code to 1
 
 Back in your local VS Code, disconnect from SSH and reconnect. It should now detect the server.
 
+###################################
+
+18.04 which only ships GLIBC 2.27.
+
+So, the problem isn’t your steps — it’s that the VS Code server build doesn’t match the GLIBC version on TREX.
+
+✅ You have two options forward:
+
+Option A (recommended, safer)
+
+Install an older VS Code server version that is compatible with GLIBC 2.27 (Ubuntu 18.04).
+
+Example: VS Code 1.74.3 server works fine with GLIBC 2.27.
+
+Commands:
+
+commit=$(curl -s https://update.code.visualstudio.com/1.74.3/server-linux-x64/stable/product.json | grep -oP '"commit":\s*"\K[^"]+')
+mkdir -p ~/.vscode-server/bin/$commit
+cd ~/.vscode-server/bin/$commit
+curl -L "https://update.code.visualstudio.com/1.74.3/server-linux-x64/stable" -o vscode-server.tar.gz
+tar --strip-components 1 -xzf vscode-server.tar.gz
+rm vscode-server.tar.gz
+
+
+Then reconnect from your local VS Code.
+
+Option B (heavier, not recommended unless required)
+
+Upgrade GLIBC on TREX from 2.27 → 2.28+.
+
+This is risky because GLIBC is core to the OS.
+
+Needs root access, compilation, and testing (can break other apps).
+
+Typically, IT admins do this, not end users.
+
+👉 Given your environment (TREX is a shared enterprise box), Option A is the right move: install a VS Code server version compatible with GLIBC 2.27.
+
+Do you want me to give you the exact uninstall-cleanup steps for the wrong commit (e3a5acf...) and then install the 1.74.3 version fresh?
+
