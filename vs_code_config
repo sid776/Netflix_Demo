@@ -144,3 +144,44 @@ curl -L "https://update.code.visualstudio.com/1.74.3/server-linux-x64/stable" -o
 tar --strip-components 1 -xzf vscode-server.tar.gz
 rm vscode-server.tar.gz
 
+########################################################################################################
+
+Perfect — your screenshot shows your local VS Code version is:
+
+1.104.2
+commit: ea36acf5b7434a3225981655413d56653107692
+
+
+That means when you SSH into TREX, VS Code Remote-SSH will try to install the server under:
+
+~/.vscode-server/bin/ea36acf5b7434a3225981655413d56653107692
+
+✅ Next steps for you
+
+SSH into TREX:
+
+ssh jenas7@10.224.82.10
+
+
+Create the server folder for that commit:
+
+mkdir -p ~/.vscode-server/bin/ea36acf5b7434a3225981655413d56653107692
+cd ~/.vscode-server/bin/ea36acf5b7434a3225981655413d56653107692
+
+
+Download and extract the server:
+
+curl -L "https://update.code.visualstudio.com/1.104.2/server-linux-x64/stable" -o vscode-server.tar.gz
+tar --strip-components 1 -xzf vscode-server.tar.gz
+rm vscode-server.tar.gz
+
+
+Verify files exist:
+
+ls -l ~/.vscode-server/bin/ea36acf5b7434a3225981655413d56653107692
+
+
+You should see bin/, node, package.json, etc.
+
+Back in your local VS Code, disconnect from SSH and reconnect. It should now detect the server.
+
