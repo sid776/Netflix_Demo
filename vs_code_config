@@ -183,5 +183,87 @@ ls -l ~/.vscode-server/bin/ea36acf5b7434a3225981655413d56653107692
 
 You should see bin/, node, package.json, etc.
 
+##########################################################################################################################
+
+Step 1 — Quick sanity check on TREX
+
+Run these on TREX:
+
+# list the two server folders
+ls -1 ~/.vscode-server/bin
+
+# test the *current* (ea35acf…) server’s node binary
+~/.vscode-server/bin/ea35acf*/node -v
+
+
+If you see a version like v18.x, great → go to Step 2.
+
+If you see an error like “libc.so.6: version GLIBC_2.28 not found”, skip to Step 3 (Downgrade client).
+
+Step 2 — Reconnect cleanly (if no GLIBC error)
+
+In VS Code (local), bottom-left green box → Close Remote Connection.
+
+Connect to Host… → jenas7@10.224.82.10 → choose Linux.
+It should now reuse the ea35acf… server you just unpacked.
+
+If it still shows the same prereq dialog, delete temp state and retry:
+
+# on TREX
+rm -rf ~/.vscode-server/.tmp
+
+
+Reconnect again. If it still fails, move to Step 3.
+
+Step 3 — (Most likely) Downgrade your local VS Code to a build that works with Ubuntu 18.04
+
+The reliable fix on glibc-2.27 systems is to use VS Code 1.74.3 on your laptop, which pushes a compatible server to TREX.
+
+A) Install VS Code 1.74.3 (Windows x64, User setup)
+
+Download and run:
+https://update.code.visualstudio.com/1.74.3/win32-x64-user/stable
+
+After install, open VS Code and confirm:
+
+Help → About
+Version: 1.74.3
+
+
+(The commit will be different; that’s fine.)
+
+B) Clean the old server folders on TREX
+ssh jenas7@10.224.82.10
+mv ~/.vscode-server ~/.vscode-server.backup.$(date +%s)  # keep a backup just in case
+
+C) Reconnect from the downgraded VS Code
+
+VS Code → Remote-SSH: Connect to Host… → jenas7@10.224.82.10 → Linux
+VS Code will push/download the 1.74.3 server which works with glibc 2.27, and the connection should succeed.
+
+(If your network proxy blocks the auto-download, we can pre-seed it like you did before with:
+
+commit=$(curl -s https://update.code.visualstudio.com/1.74.3/server-linux-x64/stable/product.json | grep -oP '"commit":\s*"\K[^"]+')
+mkdir -p ~/.vscode-server/bin/$commit
+cd ~/.vscode-server/bin/$commit
+curl -L "https://update.code.visualstudio.com/1.74.3/server-linux-x64/stable" -o vscode-server.tar.gz
+tar --strip-components 1 -xzf vscode-server.tar.gz
+rm vscode-server.tar.gz
+
+
+…and then reconnect.)
+
+Step 4 — Open your project
+
+Once connected (you’ll see SSH: 10.224.82.10 in the status bar):
+
+File → Open Folder… → /home/jenas7/plat_aiesdp_elt_pipeline → OK.
+
+TL;DR
+
+Use the ea35acf… folder only if its node runs (no GLIBC error).
+
+If it does complain about GLIBC_2.28 (likely), downgrade your local VS Code to 1.74.3, clear ~/.vscode-server on TREX, and reconnect. That’s the clean, proven path on Ubuntu 18.04.
+
 Back in your local VS Code, disconnect from SSH and reconnect. It should now detect the server.
 
