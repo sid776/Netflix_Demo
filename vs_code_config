@@ -389,3 +389,41 @@ If you want, I can also give you a portable ZIP version of VS Code 1.74.3 so you
 
 If you want, I can drop the exact download link/steps for installing VS Code 1.74.3 on your local VM too.
 
+########################################################################################################################################################
+Option A (recommended): Match on 1.74.3 (works with Ubuntu 18.04 glibc)
+
+On TREX (Ubuntu 18.04) wipe what you have and install the 1.74.3 server:
+
+ssh jenas7@10.224.82.10
+
+# (optional, if you’re behind the proxy)
+export http_proxy="http://proxy.cat.com:80"
+export https_proxy="$http_proxy"
+export HTTP_PROXY="$http_proxy"
+export HTTPS_PROXY="$http_proxy"
+
+# remove all previously unpacked VS Code servers
+rm -rf ~/.vscode-server/bin/*
+
+# fetch & unpack VS Code Server for 1.74.3
+commit=$(curl -s https://update.code.visualstudio.com/1.74.3/server-linux-x64/stable/product.json | grep -oP '"commit":\s*"\K[^"]+')
+mkdir -p ~/.vscode-server/bin/$commit
+cd ~/.vscode-server/bin/$commit
+curl -L "https://update.code.visualstudio.com/1.74.3/server-linux-x64/stable" -o vscode-server.tar.gz
+tar --strip-components 1 -xzf vscode-server.tar.gz
+rm vscode-server.tar.gz
+
+# quick sanity check
+~/.vscode-server/bin/$commit/bin/code-server --help | head -n 3
+
+
+On your Windows VM, install VS Code 1.74.3 (so client = server):
+
+Uninstall the current VS Code (or install 1.74.3 over it).
+
+After installing, open VS Code → Help → About and confirm it shows Version 1.74.3.
+
+In Settings, search “Update: Mode” and set to manual (to avoid auto-upgrading past 1.74.3).
+
+Reconnect via Remote-SSH to jenas7@10.224.82.10. With matching commits, it should connect cleanly.
+
