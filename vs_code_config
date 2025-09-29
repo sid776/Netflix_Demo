@@ -562,4 +562,103 @@ index_aws_staging_dev_from_s3_dag
 ✅ So the first bucket (ics-plat-dev/unpacked/) is your source, and the second (ics-plat-per-dev/staging/) is your target.
 
 👉 Do you want me to write the exact commands in the order you should paste into your VS Code terminal, so you don’t need to think about paths?
+######################################################################################################################################################
+From your screenshot the string includes “.json”. In our pipeline the PTAG is the name only (no file extension).
+I’ll assume:
+
+PTAG = 12345_57bbdce684d41c50cadeb5adc034a812
+
+You put sample files in ~/SampleData1/ on TREX.
+
+0) Set PTAG + region (TREX terminal)
+export PTAG=12345_57bbdce684d41c50cadeb5adc034a812
+export AWS_DEFAULT_REGION=us-east-1    # change if your creds are for us-east-2
+aws sts get-caller-identity
+
+1) Push data to Staging/<ptag>/raw/
+# optional speed-up (safe)
+aws configure set s3.max_concurrent_requests 100
+
+# sync your local sample to the staging "raw" prefix
+aws s3 sync ~/SampleData1/ s3://ics-test-dev/Staging/$PTAG/raw/
+
+# sanity check
+aws s3 ls s3://ics-test-dev/Staging/$PTAG/raw/ --recursive | head
+
+2) (If you have an integrity config JSON) upload it
+
+If that “.json” you showed is an integrity config file, upload it next to your data:
+
+# assuming the file is in your current folder
+aws s3 cp 12345_57bbdce684d41c50cadeb5adc034a812.json \
+  s3://ics-test-dev/Staging/$PTAG/integrity_config.json
+
+
+(If you weren’t given a config, skip this.)
+
+3) Run the index DAG (Airflow UI on dev)
+
+Open: http://10.224.82.10:5001
+
+Find and Trigger: index_aws_staging_dev_from_s3_dag
+
+When prompted for parameters, paste:
+
+{"ptag":"12345_57bbdce684d41c50cadeb5adc034a812"}
+
+
+Watch until Success.
+
+Quick DB sanity (Adminer)
+
+Open Adminer (dev creds from Peter) and run:
+
+SELECT * FROM raw_data_staging
+WHERE ptag = '12345_57bbdce684d41c50cadeb5adc034a812'
+LIMIT 50;
+
+4) Run the unpack DAG
+
+Back in Airflow:
+
+Trigger run_aws_dev_unpacked_to_s3_dag
+
+Params:
+
+{"ptag":"12345_57bbdce684d41c50cadeb5adc034a812"}
+
+
+When it finishes, list a few results (your env has Unpacked under plat-per-dev):
+
+aws s3 ls s3://ics-plat-per-dev/Unpacked/ --recursive | head -n 50
+# If your team writes under PTAG in dev:
+aws s3 ls s3://ics-test-dev/Unpacked/$PTAG/ --recursive | head -n 50
+
+5) (If required) run the integrity report DAG
+
+If your task asks for it, trigger:
+
+run_integrity_report_generation_for_unpacked_logs_dev_dag
+
+Params:
+
+{"ptag":"12345_57bbdce684d41c50cadeb5adc034a812"}
+
+
+Then check for reports:
+
+aws s3 ls s3://ics-plat-per-dev/Unpacked/ --recursive | grep -i reports | head
+
+If anything fails
+
+AccessDenied / ExpiredToken → re-export fresh env vars from the Access Portal, then re-run.
+
+Index DAG can’t find data → confirm you used the exact path:
+
+s3://ics-test-dev/Staging/<PTAG>/raw/...
+
+
+Unsure where Unpacked went → open the unpack DAG’s logs; they print the exact S3 prefix.
+
+Tell me what you see after step 4 (the aws s3 ls results or any Airflow errors), and I’ll steer the next fix.
 
