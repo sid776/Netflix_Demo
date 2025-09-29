@@ -427,3 +427,46 @@ In Settings, search “Update: Mode” and set to manual (to avoid auto-upgradin
 
 Reconnect via Remote-SSH to jenas7@10.224.82.10. With matching commits, it should connect cleanly.
 
+##########################################
+Yep — the “1st step” in that wiki equals download a sample log from AWS S3 to TREX.
+
+Do this on TREX (the box you’re already SSH’d into):
+
+Make sure AWS CLI works
+
+aws --version
+# if missing:
+sudo apt-get install -y awscli
+
+
+Use the dev profile (or whatever name your team uses)
+
+export AWS_PROFILE=aiesdp-dev   # <-- replace with your actual dev profile
+export AWS_DEFAULT_REGION=us-east-2
+
+
+(If you SSO: aws sso login --profile aiesdp-dev.)
+
+Create a local folder for the logs
+
+mkdir -p ~/data/logs/dev_sample
+
+
+Sync from S3 to TREX (this is the actual Step-1 action)
+
+# Replace BUCKET and PREFIX with the real dev bucket/prefix
+aws s3 sync s3://<DEV_BUCKET>/<LOG_PREFIX>/  ~/data/logs/dev_sample/  --no-progress
+
+
+Tips to find <DEV_BUCKET>/<LOG_PREFIX> fast:
+
+In the repo you opened in VS Code, check for a config or staging file:
+configs/, environment/, or ingest_* often contain bucket/prefix values.
+
+Or open the AWS console (S3) → your dev account → copy the bucket & folder path the team uses for sample logs.
+
+If unsure, ping Peter/Benjamin for the exact bucket/prefix used in Dev.
+
+Once that finishes, you’ve completed Step 1 (“Download log from AWS”).
+Next up will be generating the dummy ptag and placing it with the files before pushing to the staging S3 path—tell me when your aws s3 sync is done and I’ll give you the exact commands for Step 2.
+
