@@ -469,4 +469,46 @@ If unsure, ping Peter/Benjamin for the exact bucket/prefix used in Dev.
 
 Once that finishes, you’ve completed Step 1 (“Download log from AWS”).
 Next up will be generating the dummy ptag and placing it with the files before pushing to the staging S3 path—tell me when your aws s3 sync is done and I’ll give you the exact commands for Step 2.
+#######################################################################################################################
+
+Next Steps (following your Jira task DoD):
+
+Pick the right bucket + path (your task mentions dev/staging):
+Example:
+
+aws s3 ls s3://ics-vision-dev/
+
+
+or
+
+aws s3 ls s3://ics-vision-dev-us-east-1/
+
+
+Download logs from AWS (to your VM):
+
+aws s3 sync s3://<bucket>/<path_to_logs> ./logs
+
+
+Example:
+
+aws s3 sync s3://ics-vision-dev/staging/logs ./logs
+
+
+Upload dummy log (to staging):
+
+aws s3 cp ./dummy.log s3://ics-vision-dev/staging/
+
+
+Run Airflow DAG (from your Jira link):
+Access the dev Airflow instance:
+
+http://10.224.82.10:5001
+
+
+Trigger:
+
+index_aws_staging_dev_from_s3_dag
+
+
+Verify data using Adminer or database query (as per Jira DoD).
 
