@@ -356,6 +356,36 @@ Important: match your local VS Code
 
 Your local VS Code must also be 1.74.3 (same commit), otherwise it will try to push a newer server that needs glibc 2.28 and you’ll hit the same error.
 Use a 1.74.3 installer or a portable build just for TREX, then reconnect with Remote-SSH.
+#######################################################################################################################
+🔗 Download links for VS Code 1.74.3 (Windows)
+
+Microsoft patch site: VSCodeSetup-x64-1.74.3.exe 
+ManageEngine
+
+Chocolatey package (1.74.3) 
+Chocolatey Software
+
+General VS Code version archive (see release “1.74”) 
+Visual Studio Code
+
+🛠 Steps to install VS Code 1.74.3 locally
+
+Download VSCodeSetup-x64-1.74.3.exe from the patch or archive link above.
+
+Run the installer. Prefer the User setup if possible (less interference with system).
+
+After install, open VS Code → Help → About → confirm version shows 1.74.3 (and commit matches c3511e6c69bb39013c4a4b7b9566ec1ca73fc4d5).
+
+If your VM had a newer version already, uninstall or ensure the installer doesn’t auto-upgrade back to latest.
+
+✅ After installing the correct client version
+
+Back in TREX: ensure the server version under ~/.vscode-server/bin/c3511e6c69bb39013c4a4b7b9566ec1ca73fc4d5 is properly extracted.
+
+In your local VS Code (now 1.74.3), Remote-SSH → Connect to Host → jenas7@10.224.82.10.
+It should now match the server and finally connect successfully (no glibc errors).
+
+If you want, I can also give you a portable ZIP version of VS Code 1.74.3 so you don’t have to uninstall your current version permanently. Do you prefer that?
 
 If you want, I can drop the exact download link/steps for installing VS Code 1.74.3 on your local VM too.
 
