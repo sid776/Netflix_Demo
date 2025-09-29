@@ -511,4 +511,55 @@ index_aws_staging_dev_from_s3_dag
 
 
 Verify data using Adminer or database query (as per Jira DoD).
+###################################################################################################################
+Perfect 👌 — this config.json you’ve opened is directly telling us which S3 paths your pipeline expects.
+
+From your screenshot, the key parts are:
+
+"base_path": "s3://ics-plat-dev/unpacked/",
+"dest_folder_base": "s3://ics-plat-per-dev/staging/",
+
+
+That means:
+
+Input logs/data should be pulled from → s3://ics-plat-dev/unpacked/
+
+Your dummy logs or processed data should be uploaded to → s3://ics-plat-per-dev/staging/
+
+How to Run Your Jira Task Step-by-Step
+
+Download logs from AWS (to your local VM directory ./logs)
+
+aws s3 sync s3://ics-plat-dev/unpacked/ ./logs
+
+
+Create a dummy log file (if needed)
+
+echo "this is a dummy log entry" > dummy.log
+
+
+Upload dummy log to the staging bucket
+
+aws s3 cp dummy.log s3://ics-plat-per-dev/staging/
+
+
+(Optional) Upload entire folder to staging (like your config.json suggests)
+
+aws s3 sync ./logs s3://ics-plat-per-dev/staging/
+
+
+Verify upload worked
+
+aws s3 ls s3://ics-plat-per-dev/staging/
+
+
+Trigger your Airflow DAG (from browser: http://10.224.82.10:5001)
+DAG name (per Jira):
+
+index_aws_staging_dev_from_s3_dag
+
+
+✅ So the first bucket (ics-plat-dev/unpacked/) is your source, and the second (ics-plat-per-dev/staging/) is your target.
+
+👉 Do you want me to write the exact commands in the order you should paste into your VS Code terminal, so you don’t need to think about paths?
 
