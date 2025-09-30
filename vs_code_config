@@ -885,3 +885,77 @@ aws s3 ls s3://ics-cfu-dev/Staging/Newmont/Tamani/test-logs/ --recursive
 If this lists files, your permissions and region are OK.
 
 Do not run anything on TREX for this exercise; keep it all local as per the doc.
+####################################
+Core-docker locally (no AWS)
+0) One-time setup (Windows VM)
+
+Install Docker Desktop (WSL2 enabled).
+
+Clone your team’s core-docker repo (the wiki with run.sh --image core-minimal).
+
+Make two local folders for the lab data:
+
+C:\1A\logs\cfu\Staging\Newmont\Tamani\test-logs\
+
+C:\1A\logs\cfu\Unpacked\hlogcopy_test\
+
+Drop a few .hlog files (and the Reports/<json>.json) into
+C:\1A\logs\cfu\Staging\Newmont\Tamani\test-logs\
+(If you were given sample logs, use those. You don’t need S3 or NFS.)
+
+1) Start the core-minimal container (maps your Windows folder in)
+
+From the core-docker repo root on your Windows VM:
+
+# PowerShell in the repo folder
+.\run.sh --image core-minimal `
+  --mount "C:\1A\logs:/mnt/1A/logs"
+
+
+This opens a shell inside the container. Your Windows path appears at /mnt/1A/logs.
+
+2) Inside the container: run the tools
+# inside-container paths (Linux-style)
+SRC=/mnt/1A/logs/cfu/Staging/Newmont/Tamani/test-logs
+DST=/mnt/1A/logs/cfu/Unpacked/hlogcopy_test
+
+# sanity check the source
+hlogtool -c "$SRC"
+
+# create snapshots for the dataset
+hlogsnapshot -a "$SRC"
+
+# unpack & index everything to the destination
+hlogcopy -a "$SRC" "$DST"
+
+# (optional) machine-readable run
+hlogcopy -m "$SRC" "$DST"
+
+# list snapshots/results
+hlogsnapshot -l "$DST"
+
+Expected outcomes
+
+hlogtool -c prints a summary table (messages, channels, errors).
+
+hlogcopy -a creates a cth-style structure in $DST and will unpack/index logs.
+
+hlogsnapshot -l shows snapshots created in Reports/snapshots.
+
+Notes & pitfalls
+
+No AWS needed: you’re reading .hlog from your local C:\... and writing results locally.
+
+Use forward slashes in container paths. The --mount "C:\1A\logs:/mnt/1A/logs" bridges Windows↔Linux.
+
+If run.sh isn’t in your repo, your team’s core-docker readme will show the equivalent docker run with -v C:\1A\logs:/mnt/1A/logs.
+
+What you can report back
+
+Core-docker runs locally with core-minimal.
+
+I mounted local logs into the container, ran hlogtool, created snapshots, and unpacked/indexed with hlogcopy to a local destination—no AWS, no TREX Docker touched.
+
+Outputs are under C:\1A\logs\cfu\Unpacked\hlogcopy_test\ (screenshots available if needed).
+
+If you want, paste the hlogtool -c and hlogsnapshot -l outputs here and I’ll sanity-check them.
