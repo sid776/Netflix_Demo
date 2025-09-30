@@ -68,3 +68,29 @@ hlogtool shows nothing → wrong SRC; verify with ls -R $SRC.
 Webviz blank → ensure bags exist in $DEST/rosbags and you dragged a real .bag.
 
 Run those blocks top to bottom and you’re done. If any command errors, paste the exact line + error and I’ll
+################################################################################################
+# 1. Update packages
+sudo apt-get update
+sudo apt-get install -y ca-certificates curl gnupg lsb-release
+
+# 2. Add Docker’s official GPG key
+sudo mkdir -p /etc/apt/keyrings
+curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+
+# 3. Add Docker’s official repository
+echo \
+  "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu \
+  $(lsb_release -cs) stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+
+# 4. Update again and install Docker
+sudo apt-get update
+sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+
+# 5. Add your user to docker group (so you don’t need sudo each time)
+sudo usermod -aG docker $USER
+newgrp docker
+
+# 6. Test
+docker --version
+docker run hello-world
+
