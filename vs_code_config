@@ -959,3 +959,53 @@ I mounted local logs into the container, ran hlogtool, created snapshots, and un
 Outputs are under C:\1A\logs\cfu\Unpacked\hlogcopy_test\ (screenshots available if needed).
 
 If you want, paste the hlogtool -c and hlogsnapshot -l outputs here and I’ll sanity-check them.
+
+#########################################################################################################
+✅ Option 2: Fix SSH Key
+
+If you want to keep using SSH:
+
+Generate an SSH key (if you don’t have one yet):
+
+ssh-keygen -t rsa -b 4096 -C "your_email@example.com"
+
+
+Press Enter for defaults (no passphrase if you want it simple).
+
+Start the SSH agent:
+
+eval "$(ssh-agent -s)"
+ssh-add ~/.ssh/id_rsa
+
+
+Copy the key:
+
+cat ~/.ssh/id_rsa.pub
+
+
+Copy that output.
+
+Add it to GitHub:
+
+Go to GitHub → Settings → SSH and GPG Keys
+
+Click New SSH Key → paste it.
+
+Test it:
+
+ssh -T git@github.com
+
+
+You should see:
+
+Hi <username>! You've successfully authenticated...
+
+
+Retry clone:
+
+git clone git@github.com:cat-autonomy/core_docker.git
+
+What you should do now
+
+Since your company repo probably expects SSH access, I recommend Option 2 (SSH key setup).
+But if you just need to get the code quickly and don’t care about SSH setup right now, go with Option 1 (HTTPS).
