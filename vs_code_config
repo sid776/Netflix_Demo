@@ -662,3 +662,82 @@ Unsure where Unpacked went → open the unpack DAG’s logs; they print the exac
 
 Tell me what you see after step 4 (the aws s3 ls results or any Airflow errors), and I’ll steer the next fix.
 
+##########################################################################################
+A) Quickest: SSH tunnel + your own dev Airflow
+
+On TREX, check if your dev Airflow is running
+
+docker ps --format '{{.Names}}\t{{.Ports}}' | grep -Ei 'airflow|8080|5001'
+
+
+If you see nothing relevant, start your project’s dev Airflow (from the repo root that has docker-compose.yml):
+
+cd ~/plat_aiesdp_elt_pipeline
+docker compose -p aiesdp-dev up -d
+# if the stack needs init the first time:
+# docker compose -p aiesdp-dev up airflow-init
+# docker compose -p aiesdp-dev up -d
+
+
+(If your compose maps the webserver to 8080 instead of 5001, that’s fine—just use that port below.)
+
+From your Windows VM, open a tunnel (new PowerShell window):
+
+ssh -N -L 5001:localhost:5001 jenas7@10.224.82.10
+
+
+Keep this window open.
+
+If your Airflow webserver is on 8080 in the container/host, then tunnel 8080 instead:
+
+ssh -N -L 8080:localhost:8080 jenas7@10.224.82.10
+
+
+Open the UI in your browser:
+
+If you tunneled 5001 → visit: http://localhost:5001
+
+If you tunneled 8080 → visit: http://localhost:8080
+
+(If the UI asks for a login and you don’t have one in this dev stack, create one:)
+
+docker compose -p aiesdp-dev exec airflow-webserver \
+  airflow users create \
+  --username admin --firstname Dev --lastname Admin \
+  --role Admin --email dev@example.com --password admin
+
+B) (Optional) Just trigger DAGs via CLI (no browser)
+
+If you don’t need the UI, you can trigger the DAG directly in your dev stack:
+
+docker compose -p aiesdp-dev exec airflow-webserver \
+  airflow dags trigger run_aws_staging_dev_from_s3_dag
+
+
+View status:
+
+docker compose -p aiesdp-dev exec airflow-webserver airflow dags list
+docker compose -p aiesdp-dev exec airflow-webserver airflow tasks list run_aws_staging_dev_from_s3_dag
+docker compose -p aiesdp-dev logs -f airflow-scheduler
+
+If “refused” persists
+
+On TREX, confirm the webserver is listening:
+
+ss -ltnp | grep -E '5001|8080'
+
+
+If your compose uses a different port (common is 8080), adjust the tunnel accordingly.
+
+If port collisions worry you, run your stack on a unique port by adding an override:
+
+# docker-compose.override.yml
+services:
+  airflow-webserver:
+    ports:
+      - "15001:8080"
+
+
+Then tunnel to 15001 or browse to http://10.224.82.10:15001 (or http://localhost:15001 if tunneling).
+
+Pick A (tunnel + UI) if you want the web interface; pick B (CLI) if you just need to run the DAG. Want me to tailor the exact docker compose commands to your repo’s docker-compose.yml (port names/services) based on a quick snippet?
