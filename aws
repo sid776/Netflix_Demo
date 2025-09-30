@@ -1,0 +1,43 @@
+Quick sanity check:
+
+aws sts get-caller-identity
+
+
+(Should show the prod account.)
+
+1) Confirm the prod bucket name
+
+Most teams use ics-test-prod to mirror ics-test-dev. Verify:
+
+aws s3 ls | grep ics-test-
+aws s3 ls s3://ics-test-prod/    # should list top-level prefixes
+
+
+If your bucket is named slightly differently in prod, just swap that name in the commands below.
+
+2) Set your PTAG and a source folder
+PTAG="12345_57bbdce6844d41c50cadeb5adc034a812"
+SRC=~/SampleData1
+DST="s3://ics-test-prod/Staging/$PTAG/raw/"
+
+3) Dry-run first (safe)
+aws s3 sync "$SRC" "$DST" \
+  --exclude "*" --include "*.json" --include "*.hlog" \
+  --dryrun
+
+
+If the file list looks right, remove --dryrun:
+
+aws s3 sync "$SRC" "$DST" \
+  --exclude "*" --include "*.json" --include "*.hlog" \
+  --acl bucket-owner-full-control
+
+
+sync will auto-create Staging/$PTAG/raw/ in prod.
+Add more --include patterns if you want additional file types.
+
+4) Verify in prod
+aws s3 ls "$DST" --recursive --summarize
+
+
+You’re done—this is the prod/Staging equivalent of what you did for dev. If aws s3 ls s3://ics-test-prod/ fails with AccessDenied, you’re still on dev creds; re-paste the prod exports and try again.
