@@ -1,0 +1,120 @@
+0) One-time prep (host)
+# Where you want local data to live
+mkdir -p /c/core-docker-data/logs/cfu/staging/newmont/tamani
+mkdir -p /c/core-docker-data/unpacked/hlogcopy_test
+
+
+Put the sample .hlog files (the “tamani” demo logs from the wiki/zip your team shares) into:
+/c/core-docker-data/logs/cfu/staging/newmont/tamani/
+
+If you don’t have the logs yet, you can still do steps 1–3 and run hlogtool --help, but for the “hlogtool/hlogcopy” outputs you’ll need real .hlog files.
+
+1) Build & launch core-minimal
+
+From the repo root:
+
+cd /c/Users/jenas7/docker1/core_docker
+
+# Try the project’s launcher first (preferred)
+./run.sh --image core-minimal --pull   # pulls/builds the image
+./run.sh --image core-minimal          # starts a shell in the container
+
+
+If run.sh isn’t available/doesn’t mount volumes, use plain Docker:
+
+docker build -f docker/core-minimal.Dockerfile -t core-minimal .
+
+docker run --rm -it --name core-min \
+  -v /c/core-docker-data/logs:/mnt/ia/logs \
+  -v /c/core-docker-data/unpacked:/mnt/ia/logs/cfu/unpacked \
+  core-minimal bash
+
+
+You should now be inside the container shell (root@…#).
+
+2) Sanity checks (inside container)
+hlogtool --help
+hlogcopy  --help
+hlogsnapshot --help
+
+3) Run the hlog tools (inside container, with real logs present)
+3.1 Quick scan / channel list
+# Show high-level info / checks
+hlogtool -c /mnt/ia/logs/cfu/staging/newmont/tamani
+
+# List data keys/channels
+hlogtool -k /mnt/ia/logs/cfu/staging/newmont/tamani
+
+3.2 Copy/unpack logs into an indexed structure
+SRC=/mnt/ia/logs/cfu/staging/newmont/tamani
+DEST=/mnt/ia/logs/cfu/unpacked/hlogcopy_test
+
+# Copy all machine-readable; shows progress
+hlogcopy -a -m "$SRC" "$DEST"
+
+# Optional: copy subset by key/time (example)
+# hlogcopy -s --snapshotName TransmissionIndex 1138010562 1138010622 "$SRC" "$DEST"
+
+3.3 Snapshots (optional but shown in wiki)
+# List snapshots discovered
+hlogsnapshot -l "$DEST"
+
+# Verbose snapshot state
+hlogsnapshot -l -v "$DEST"
+
+4) Convert HLOG → ROS bag (inside container)
+
+The wiki’s example uses a helper script; core-minimal typically includes the toolchain.
+
+Common pattern:
+
+# Source env if the repo provides it (name may differ; adjust to what’s in the repo)
+# If not present, skip this line.
+source /opt/cat/ais/scripts/setup_transmission.bash 2>/dev/null || true
+
+# Convert (example paths; adjust to your actual file)
+convertHlogToRosbag \
+  --hlog "$DEST/<some_log>.hlog" \
+  --out  "$DEST/rosbags"
+
+
+After it runs, you should have *.bag files under $DEST/rosbags.
+
+5) Visualize with Webviz (on host, no AWS)
+
+Run Webviz in a separate host terminal:
+
+docker run --rm -p 8081:8080 \
+  -v /c/core-docker-data/unpacked:/data \
+  ghcr.io/cruise-automation/webviz:latest
+# or: cruise/webviz:latest  (if ghcr image isn’t available)
+
+
+Open http://localhost:8081
+ in your browser:
+
+Drag a .bag from C:\core-docker-data\unpacked\hlogcopy_test\rosbags\ into the page.
+
+Paste the Webviz config from the wiki (Appendix A) into the config modal (top-right cog).
+
+6) What to capture for the ticket (DoD proof)
+
+Screenshot of the running container (./run.sh --image core-minimal or docker run …).
+
+hlogtool -k output (channel list).
+
+hlogcopy -a -m completion + the resulting folder tree under hlogcopy_test.
+
+hlogsnapshot -l before/after (if you ran snapshots).
+
+Webviz page showing a rendered trajectory/plot from your .bag.
+
+Troubleshooting (local only)
+
+No output from hlogtool → you don’t have real .hlog files in …/tamani. Drop the team’s sample logs there.
+
+Path issues in Git Bash → always use /c/... inside Git Bash; inside the container use /mnt/ia/... as above.
+
+Webviz won’t load → make sure the -v mount points to the parent folder that contains your .bag.
+
+Corporate proxy blocks image pulls → in Docker Desktop, set your proxy under Settings → Resources → Proxies, then retry docker pull.
