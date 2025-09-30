@@ -741,3 +741,147 @@ services:
 Then tunnel to 15001 or browse to http://10.224.82.10:15001 (or http://localhost:15001 if tunneling).
 
 Pick A (tunnel + UI) if you want the web interface; pick B (CLI) if you just need to run the DAG. Want me to tailor the exact docker compose commands to your repo’s docker-compose.yml (port names/services) based on a quick snippet?
+
+#########################################################################
+1) Prep: folders on your local machine
+
+Pick a base folder (adjust if you prefer another drive):
+
+Windows PowerShell
+
+# choose a base root once
+$BASE = "C:\1A\logs\cfu"
+
+# staging (where S3 data lands locally)
+mkdir "$BASE\Staging\Newmont\Tamani\test-logs" -Force | Out-Null
+
+# unpacked output (what hlogcopy writes)
+mkdir "$BASE\Unpacked\hlogcopy_test" -Force | Out-Null
+
+
+(If you’re on WSL/Linux/Mac, the analogous paths would be /mnt/1A/logs/cfu/...)
+
+2) AWS credentials (12-hour temporary)
+
+Use the Access Keys page you opened (the screenshots with “Option 1/2”). Two easy ways:
+
+Option A (env vars for this PowerShell session only)
+
+$env:AWS_ACCESS_KEY_ID="…"
+$env:AWS_SECRET_ACCESS_KEY="…"
+$env:AWS_SESSION_TOKEN="…"
+$env:AWS_DEFAULT_REGION="us-east-1"
+
+
+Option B (~/.aws/credentials profile)
+Create ~\.aws\credentials with a profile, e.g. ICSAdmin:
+
+[ICSAdmin]
+aws_access_key_id = …
+aws_secret_access_key = …
+aws_session_token = …
+
+
+Then set:
+
+$env:AWS_PROFILE="ICSAdmin"
+$env:AWS_DEFAULT_REGION="us-east-1"
+
+3) Pull a small sample from S3 (no NFS mount needed)
+
+(Use your env/profile from step 2.)
+
+# sync a *small* set (hlog + json)
+aws s3 sync s3://ics-cfu-dev/Staging/Newmont/Tamani/test-logs/ `
+  "C:\1A\logs\cfu\Staging\Newmont\Tamani\test-logs\" `
+  --exclude "*" --include "*.hlog" --include "*.json"
+
+
+If your IP isn’t whitelisted for NFS, this S3 sync method is the right one (it’s what the wiki lists as option 2).
+
+4) Start core-docker (core-minimal) locally
+
+The wiki shows running a helper script like ./run.sh --image core-minimal. If you have that core-docker repo locally, use it and mount your logs:
+
+PowerShell (from the repo root where run.sh lives)
+
+# Mount the Windows path into the container at /mnt/1A/logs
+.\run.ps1 --image core-minimal --mount "C:\1A\logs:/mnt/1A/logs"
+
+
+If you don’t have the helper scripts, a plain Docker run is fine (replace the image with the exact core-minimal image you’ve been given):
+
+docker run --rm -it `
+  -v "C:\1A\logs:/mnt/1A/logs" `
+  --name core-minimal `
+  <core-minimal-image>:latest `
+  bash
+
+
+You’ll land in a shell inside the container.
+
+5) Run the hlog tools inside the container
+
+Paths below are the container view of your folders:
+
+# inside the container
+SRC=/mnt/1A/logs/cfu/Staging/Newmont/Tamani/test-logs
+DEST=/mnt/1A/logs/cfu/Unpacked/hlogcopy_test
+
+# sanity check: you should see .hlog/.json files
+ls -lh "$SRC"
+
+# quick health check of the logs
+hlogtool -c "$SRC"
+
+# (optional) list key/channel info
+hlogtool -k "$SRC"
+
+# unpack/copy all logs into the CTH structure at DEST
+mkdir -p "$DEST"
+hlogcopy -a "$SRC" "$DEST"
+
+
+You should see CTH-style folders (e.g., images_raw, Reports, snapshots, etc.) appear under hlogcopy_test.
+
+6) (Optional) snapshots & listing
+# add a snapshot tag (title + min/max are example numbers)
+hlogsnapshot -a "snapshot1" 1318085927 1318086327 "$DEST"
+
+# list snapshots (concise)
+hlogsnapshot -l "$DEST"
+
+# list snapshots (verbose, includes state)
+hlogsnapshot -l -v "$DEST"
+
+7) Exit & verify locally
+
+Exit the container, then check on Windows that files appeared under:
+
+C:\1A\logs\cfu\Unpacked\hlogcopy_test\
+
+
+If you want to re-run on a different dataset, just sync a new subset into …\test-logs\ and repeat step 5.
+
+Troubleshooting (most common)
+
+“refused to connect” to 10.224.82.10:5001
+That’s an internal Airflow UI. It’s unrelated to this exercise, and you don’t need it here.
+
+“Parameter validation failed: Invalid bucket name ‘sync’ …”
+That error happens when aws s3 sync is missing a space or slashes are off. The correct pattern is:
+
+aws s3 sync s3://<bucket>/<path>/  <local-destination>\
+
+
+Make sure you’re not writing aws s3 sync ~/SampleData1 s3://… in the wrong order, and always keep the trailing slash on the S3 prefix.
+
+Empty local folders
+Re-check your includes/excludes and region:
+
+aws s3 ls s3://ics-cfu-dev/Staging/Newmont/Tamani/test-logs/ --recursive
+
+
+If this lists files, your permissions and region are OK.
+
+Do not run anything on TREX for this exercise; keep it all local as per the doc.
