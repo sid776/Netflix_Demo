@@ -1,0 +1,66 @@
+409 CONFLICT … /v1/experiments?name=metricsPipelineDemo_test → that name already exists.
+
+…&user=cwsid&experiment_id=None → your user wasn’t set (the script defaulted to the literal string cwsid), and because the experiment create failed, experiment_id is None, which then causes the follow-on 400 BAD REQUEST and 500 errors when creating runs/metrics.
+
+Do these fixes in your Git Bash (MINGW64) terminal where your venv is active:
+
+Go to the script folder (you’re already there in the screenshot, just for completeness)
+
+cd ~/mlflow/plat_aiesdp_analytics/training_templates/metrics_pipeline/src
+
+
+Make sure proxy bypass includes the API host (so we don’t send 10.224.* through proxy)
+
+export HTTP_PROXY="http://proxy.cat.com:80"
+export HTTPS_PROXY="http://proxy.cat.com:80"
+export NO_PROXY="localhost,127.0.0.1,cat.com,*.cat.com,10.224.82.10"
+
+
+Set your user/CWS ID (this is the thing that was showing up as user=cwsid)
+
+export cwsid="jenas7"
+
+
+Use a fresh experiment name to avoid 409 conflicts (timestamped)
+
+export EXP_NAME="metricsPipelineDemo_$(date +%Y%m%d_%H%M%S)"
+
+
+Activate the venv (you already created it)
+
+source .venv/Scripts/activate
+
+
+Run the pipeline
+
+If the script accepts an argument:
+
+python metrics_pipeline_run.py --experiment "$EXP_NAME"
+
+
+If it doesn’t, open metrics_pipeline_run.py and set:
+
+experiment_name = os.getenv("EXP_NAME", "metricsPipelineDemo_test")
+user = os.getenv("cwsid", "cwsid")
+
+
+then run:
+
+python metrics_pipeline_run.py
+
+
+What you should see
+
+A 201/200 when creating the experiment (no 409).
+
+URLs showing user=jenas7 and a real UUID for experiment_id (not None).
+
+200s/201s for compute runs and metrics posts (no 400/500).
+
+Verify in Superset
+
+Go to the dev Superset, open the aiesdp_training dashboard, and filter for your new experiment name.
+
+If you still get a 500 after the above (rare once cwsid and experiment name are fixed), the metrics API might be having an issue. Quick health check:
+
+curl -sS http://10.224.82.10:5002/health
