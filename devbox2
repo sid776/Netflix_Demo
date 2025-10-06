@@ -1,0 +1,32 @@
+You don’t have docker.service → Docker isn’t installed. Install Docker CE (network permitting):
+
+# Add Docker’s repo (Ubuntu 24.04)
+sudo apt update
+sudo apt install -y ca-certificates curl gnupg lsb-release
+sudo install -m 0755 -d /etc/apt/keyrings
+curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] \
+https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" | \
+sudo tee /etc/apt/sources.list.d/docker.list >/dev/null
+
+sudo apt update
+sudo apt install -y docker-ce docker-ce-cli containerd.io
+
+# start & allow non-root usage
+sudo service docker start
+sudo groupadd docker 2>/dev/null || true
+sudo usermod -aG docker $USER
+exec su -l $USER
+docker ps
+
+
+Then run:
+
+bash ~/build_devbox_image.sh /mnt/c/Users/jenas7/elt/elt-pipeline
+
+Quick sanity checklist before running again
+# 1) Does this path exist? (should list files)
+ls /mnt/c/Users/jenas7/elt/elt-pipeline | head
+
+# 2) Is Docker reachable?
+docker ps   # must succeed before running the script
