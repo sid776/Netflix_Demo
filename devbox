@@ -28,3 +28,26 @@ the script likely has CRLF and/or a BOM, so the shebang is read as /bin/bash\r �
 piping through sed … | tr … | bash avoids editing the file and bypasses both issues
 
 Heads-up: after this runs, if you still see docker: command not found, that’s a separate problem (Docker isn’t installed/available); the command above only fixes the script-execution error.
+#######################################
+✅ What to do
+
+Copy the script into your WSL home (so it’s owned by you, not root, and not stuck on NTFS):
+
+cp /mnt/c/Users/jenas7/elt/elt-pipeline-1/dev-box/build_devbox_image.sh ~/build_devbox_image.sh
+cd ~
+
+
+Fix line endings + BOM (Windows → Linux format):
+
+sed -i 's/\r$//' build_devbox_image.sh
+sed -i '1s/^\xEF\xBB\xBF//' build_devbox_image.sh
+
+
+Make it executable:
+
+chmod +x build_devbox_image.sh
+
+
+Run it from your Linux home:
+
+bash ./build_devbox_image.sh /home/$USER/elt-pipeline
