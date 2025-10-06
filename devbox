@@ -1,0 +1,30 @@
+chmod … and sed -i … both said “Operation not permitted”
+
+so even though the file exists, WSL can’t modify it in-place on NTFS
+
+that’s why you got the odd “cannot execute / required file not found” behavior: the script has CRLF/BOM and the kernel can’t use the shebang, but you also can’t fix it in place because it’s on /mnt/c.
+
+Do this (no edits, works even on /mnt/c):
+
+# run the script *without* modifying it, stripping CRLF/BOM on the fly
+(cat build_devbox_image.sh | sed '1s/^\xEF\xBB\xBF//' | tr -d '\r') | bash -s /home/$USER/elt-pipeline
+
+
+If you’d rather make a clean copy you can edit:
+
+cp build_devbox_image.sh ~/build_devbox_image.sh
+sed -i '1s/^\xEF\xBB\xBF//' ~/build_devbox_image.sh
+sed -i 's/\r$//'            ~/build_devbox_image.sh
+chmod +x ~/build_devbox_image.sh
+bash ~/build_devbox_image.sh /home/$USER/elt-pipeline
+
+
+Why this fixes it:
+
+your file is on NTFS, so chmod/sed -i can’t change it → errors at the bottom of your pic
+
+the script likely has CRLF and/or a BOM, so the shebang is read as /bin/bash\r → “required file not found”
+
+piping through sed … | tr … | bash avoids editing the file and bypasses both issues
+
+Heads-up: after this runs, if you still see docker: command not found, that’s a separate problem (Docker isn’t installed/available); the command above only fixes the script-execution error.
