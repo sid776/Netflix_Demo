@@ -1,0 +1,217 @@
+2) Minimal data model (keep old taxonomy; add v4 + metadata)
+-- 1) keep old taxonomy table as-is (read-only)
+
+-- 2) new taxonomy_v4 (normalized but simple)
+CREATE TABLE taxonomy_v4 (
+  tax_id           BIGINT PRIMARY KEY,
+  version         VARCHAR(16) NOT NULL DEFAULT 'v4',
+  name            VARCHAR(200) NOT NULL,
+  parent_tax_id   BIGINT NULL,
+  description     TEXT,
+  created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- 3) log_meta: one row per raw log file/object
+CREATE TABLE log_meta (
+  log_id          BIGINT PRIMARY KEY,
+  source_system   VARCHAR(64) NOT NULL,          -- 'ECM'
+  uri             TEXT NOT NULL,                 -- s3://... / http(s)://...
+  captured_at     TIMESTAMP NOT NULL,
+  size_bytes      BIGINT,
+  checksum_sha256 CHAR(64),
+  tax_id          BIGINT NULL REFERENCES taxonomy_v4(tax_id)
+);
+
+-- 4) attribute dictionary (defines tag schema)
+CREATE TABLE attr_def (
+  attr_key        VARCHAR(128) PRIMARY KEY,      -- e.g. 'vehicle_model'
+  dtype           VARCHAR(32)  NOT NULL,         -- 'str','int','float','bool','json'
+  required        BOOLEAN      NOT NULL DEFAULT FALSE,
+  allowed_values  TEXT NULL,                      -- JSON array for enums (optional)
+  description     TEXT
+);
+
+-- 5) log_attr (actual tags/ptags per log, EAV pattern)
+CREATE TABLE log_attr (
+  log_id          BIGINT REFERENCES log_meta(log_id),
+  attr_key        VARCHAR(128) REFERENCES attr_def(attr_key),
+  attr_value      TEXT NOT NULL,
+  PRIMARY KEY (log_id, attr_key)
+);
+
+-- 6) integrity reports link to logs (requested in notes)
+CREATE TABLE integrity_report (
+  report_id       BIGINT PRIMARY KEY,
+  log_id          BIGINT REFERENCES log_meta(log_id),
+  status          VARCHAR(32) NOT NULL,          -- PASS|WARN|FAIL
+  details         TEXT,
+  created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+
+Notes:
+
+ptags == entries in log_attr.
+
+link raw logs → integrity reports via integrity_report.log_id.
+
+You can hang more normalization later; this PoC gets you moving.
+
+3) Ingestion DAG (Airflow)
+
+Dag id: autonomy_logs_ingest (in your elt/airflow tree)
+
+Tasks:
+
+fetch_manifest – pull ECM manifest (API/listing) of new logs + attributes.
+
+stage_to_raw – copy raw objects to your bucket (or record URIs only if remote).
+
+upsert_taxonomy_v4 – load taxonomy csv/json (keeps old; inserts/updates new).
+
+upsert_attr_def – load attribute dictionary (defines allowed keys/dtypes).
+
+load_log_meta – upsert into log_meta.
+
+load_log_attr – upsert attribute rows for each log_id.
+
+generate_integrity – compute checksum, size, required attributes present → write to integrity_report.
+
+Pseudocode skeleton:
+
+with DAG("autonomy_logs_ingest", schedule="@hourly", start_date=..., catchup=False) as dag:
+    fetch_manifest = PythonOperator(...)
+    stage_to_raw   = PythonOperator(...)
+    upsert_tax     = PythonOperator(...)
+    upsert_defs    = PythonOperator(...)
+    load_meta      = PythonOperator(...)
+    load_attr      = PythonOperator(...)
+    gen_integrity  = PythonOperator(...)
+
+    fetch_manifest >> [stage_to_raw, upsert_tax, upsert_defs]
+    [stage_to_raw, upsert_tax, upsert_defs] >> load_meta >> load_attr >> gen_integrity
+
+
+Acceptance checks in DAG:
+
+XCom count of rows loaded > 0
+
+gen_integrity produces PASS/WARN/FAIL per log
+
+SLAs/logging to catch missing required attributes (attr_def.required = true)
+
+4) API endpoints (FastAPI)
+
+Base path: /api/autonomy
+
+# GET /logs/search?attr_key=vehicle_model&attr_value=D11&limit=100
+# returns log_meta joined with log_attr filters
+GET /logs/search
+
+# GET /taxonomies/v4?parent_tax_id=...
+GET /taxonomies/v4
+
+# POST /attributes/define
+# body: {attr_key, dtype, required, allowed_values?, description?}
+POST /attributes/define
+
+
+Example query (search):
+
+SELECT m.*
+FROM log_meta m
+JOIN log_attr a ON a.log_id = m.log_id
+WHERE a.attr_key = :key AND a.attr_value = :value
+ORDER BY m.captured_at DESC
+LIMIT :limit;
+
+5) Queries they asked for (by attributes)
+
+“Mechanism to query logs from Autonomy ECM, based on attributes.”
+
+Satisfy via GET /logs/search + optional multi-filter:
+
+Support ?filters=vehicle_model:D11,region:EU,test_phase:PVT
+
+Convert to IN + intersection over log_id.
+
+6) Integrity reports linked to raw logs
+
+In gen_integrity step:
+
+compute checksum_sha256, compare to manifest value (if provided)
+
+verify required attributes exist (attr_def.required = true)
+
+write one row to integrity_report with status:
+
+PASS: checksum ok & all required attrs present
+
+WARN: attrs present but optional issues (e.g., size deviation)
+
+FAIL: checksum mismatch or missing required attrs
+
+7) Keeping old taxonomy + adding v4
+
+Keep the legacy taxonomy table read-only for consumers.
+
+All new ingestion writes taxonomy_v4.
+
+Add an alias view for downstreams if needed:
+
+CREATE VIEW taxonomy_current AS
+SELECT * FROM taxonomy_v4;  -- can switch versions later without breaking consumers
+
+8) Effort / sprints (matches your note “total 120×2=240 ~ 5 sprints”)
+
+Sprint 1: PoC (tables, one DAG path, /logs/search endpoint, 1 saved query)
+
+Sprint 2: Full attr_def management + schema validation, integrity report v1
+
+Sprint 3: Taxonomy v4 finalize + migration utilities + API pagination/sorting
+
+Sprint 4: Crawler/DAG hardening (retries, idempotency, data quality metrics)
+
+Sprint 5: Docs (“How to use”), dashboards for integrity + basic access controls
+
+9) Definition of Done (fill the DoD block)
+
+Tables created + migrations committed.
+
+DAG runs succeed on sample + produce integrity rows.
+
+API returns expected results for 3 common attribute queries.
+
+“How to use” doc: ERD, sample cURL, sample SQL, Airflow runbook.
+
+Backward-compat view (taxonomy_current) present.
+
+Basic RBAC on endpoints (read vs write).
+
+10) Risks & deps (add to “Dep/Risk” sections)
+
+Deps: ECM manifest/API availability; sample logs with attribute feed; DB access.
+
+Risks: attribute explosion → index bloat (mitigate: partial indexes on hot keys); schema drift (mitigate: attr_def gate); performance (mitigate: composite index (attr_key, attr_value, log_id)).
+
+Indexes you’ll likely need:
+
+CREATE INDEX ix_log_meta_captured_at ON log_meta(captured_at DESC);
+CREATE INDEX ix_log_attr_key_val ON log_attr(attr_key, attr_value);
+CREATE INDEX ix_log_meta_tax ON log_meta(tax_id);
+
+Copy-paste check commands (for your stand-up)
+
+“Create v4 schema & ingest” → tables exist, indexes exist, DAG ran once.
+
+“Query by attributes” → GET /logs/search?attr_key=vehicle_model&attr_value=D11 returns rows.
+
+“Integrity link” → SELECT * FROM integrity_report LIMIT 5; shows PASS/WARN/FAIL tied to log_id.
+
+If you want, I can turn this into:
+
+ready-to-run Alembic migration for the tables,
+
+a minimal FastAPI router file with the three endpoints, and
+
+a working Airflow DAG skeleton wired to your repo layout.
