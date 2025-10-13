@@ -1,0 +1,319 @@
+# Autonomy Log Database – PoC Deliverables
+
+This doc includes:
+
+* **SQL/Alembic** migration (portable SQL; adapt to your engine: Postgres/Snowflake).
+* **Airflow DAG** skeleton (`autonomy_logs_ingest`).
+* **FastAPI router** skeleton (`/api/autonomy`).
+* **ER Diagram** (Mermaid) for quick paste into Confluence/Jira.
+* **Folder layout** suggestion and run notes.
+
+---
+
+## 1) SQL Migration (portable DDL)
+
+> Save as `db/migrations/001_autonomy_log_poc.sql` (or adapt to Alembic).
+
+```sql
+-- === Autonomy Log Database: PoC schema ===
+-- Keep existing legacy taxonomy table as-is (read-only).
+
+-- 1) New Taxonomy v4
+CREATE TABLE IF NOT EXISTS taxonomy_v4 (
+  tax_id           BIGINT PRIMARY KEY,
+  version         VARCHAR(16) NOT NULL DEFAULT 'v4',
+  name            VARCHAR(200) NOT NULL,
+  parent_tax_id   BIGINT NULL,
+  description     TEXT,
+  created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- 2) Metadata for each raw log object
+CREATE TABLE IF NOT EXISTS log_meta (
+  log_id          BIGINT PRIMARY KEY,
+  source_system   VARCHAR(64) NOT NULL,               -- e.g. 'ECM'
+  uri             TEXT NOT NULL,                      -- s3://... or http(s)://...
+  captured_at     TIMESTAMP NOT NULL,
+  size_bytes      BIGINT,
+  checksum_sha256 CHAR(64),
+  tax_id          BIGINT NULL REFERENCES taxonomy_v4(tax_id)
+);
+
+-- 3) Attribute dictionary (governs ptags/attributes)
+CREATE TABLE IF NOT EXISTS attr_def (
+  attr_key        VARCHAR(128) PRIMARY KEY,           -- e.g. 'vehicle_model'
+  dtype           VARCHAR(32)  NOT NULL,              -- 'str'|'int'|'float'|'bool'|'json'
+  required        BOOLEAN      NOT NULL DEFAULT FALSE,
+  allowed_values  TEXT NULL,                           -- JSON array for enums (optional)
+  description     TEXT
+);
+
+-- 4) Log attributes (EAV pattern)
+CREATE TABLE IF NOT EXISTS log_attr (
+  log_id          BIGINT REFERENCES log_meta(log_id),
+  attr_key        VARCHAR(128) REFERENCES attr_def(attr_key),
+  attr_value      TEXT NOT NULL,
+  PRIMARY KEY (log_id, attr_key)
+);
+
+-- 5) Integrity reports linked to logs
+CREATE TABLE IF NOT EXISTS integrity_report (
+  report_id       BIGINT PRIMARY KEY,
+  log_id          BIGINT REFERENCES log_meta(log_id),
+  status          VARCHAR(32) NOT NULL,               -- PASS|WARN|FAIL
+  details         TEXT,
+  created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Indexes for typical queries
+CREATE INDEX IF NOT EXISTS ix_log_meta_captured_at ON log_meta (captured_at DESC);
+CREATE INDEX IF NOT EXISTS ix_log_attr_key_val     ON log_attr (attr_key, attr_value);
+CREATE INDEX IF NOT EXISTS ix_log_meta_tax         ON log_meta (tax_id);
+
+-- Optional: stable alias for downstreams
+CREATE OR REPLACE VIEW taxonomy_current AS
+  SELECT * FROM taxonomy_v4;
+```
+
+**Alembic heads-up**: if you use Alembic, split each table into `op.create_table(...)` statements and add `op.create_index(...)`. Keep types compatible with your target DB.
+
+---
+
+## 2) Airflow DAG Skeleton
+
+> Save as `airflow/dags/autonomy_logs_ingest.py`
+
+```python
+from datetime import datetime
+from airflow import DAG
+from airflow.operators.python import PythonOperator
+from typing import Dict, Any, List
+
+DAG_ID = "autonomy_logs_ingest"
+
+# ---- Replace these with your actual integration functions ----
+
+def fetch_manifest_fn(**ctx) -> List[Dict[str, Any]]:
+    """Return a list of items like {log_id, uri, captured_at, size_bytes, attrs:{k:v}, tax_id?}."""
+    # TODO: pull from ECM API / manifest file
+    return [
+        {
+            "log_id": 1,
+            "uri": "s3://bucket/path/log1.bin",
+            "captured_at": "2025-10-05T12:00:00Z",
+            "size_bytes": 12345,
+            "attrs": {"vehicle_model": "D11", "region": "EU"},
+            "tax_id": None,
+        }
+    ]
+
+
+def upsert_taxonomy_v4_fn(**ctx):
+    """Load/merge the latest v4 taxonomy into taxonomy_v4 table."""
+    # TODO: read from provided spec or CSV/JSON; perform merge/upsert
+    pass
+
+
+def upsert_attr_def_fn(**ctx):
+    """Seed/merge attribute definitions (attr_def)."""
+    # TODO: define keys/dtypes/required
+    pass
+
+
+def load_meta_fn(**ctx):
+    """Insert/merge into log_meta from the manifest pulled earlier."""
+    # TODO: write to DB; use connection from Airflow Conn
+    pass
+
+
+def load_attr_fn(**ctx):
+    """Insert/merge attributes for each log into log_attr."""
+    pass
+
+
+def gen_integrity_fn(**ctx):
+    """Compute checksum/status and insert into integrity_report."""
+    pass
+
+
+with DAG(
+    DAG_ID,
+    schedule_interval="@hourly",
+    start_date=datetime(2025, 10, 1),
+    catchup=False,
+    default_args={"owner": "aiesdp", "retries": 1},
+    tags=["autonomy", "logs", "poc"],
+) as dag:
+    fetch_manifest = PythonOperator(task_id="fetch_manifest", python_callable=fetch_manifest_fn)
+    stage_to_raw   = PythonOperator(task_id="stage_to_raw",   python_callable=lambda **_: None)  # optional
+    upsert_tax     = PythonOperator(task_id="upsert_taxonomy_v4", python_callable=upsert_taxonomy_v4_fn)
+    upsert_defs    = PythonOperator(task_id="upsert_attr_def",    python_callable=upsert_attr_def_fn)
+    load_meta      = PythonOperator(task_id="load_log_meta",      python_callable=load_meta_fn)
+    load_attr      = PythonOperator(task_id="load_log_attr",      python_callable=load_attr_fn)
+    gen_integrity  = PythonOperator(task_id="generate_integrity", python_callable=gen_integrity_fn)
+
+    fetch_manifest >> [stage_to_raw, upsert_tax, upsert_defs]
+    [stage_to_raw, upsert_tax, upsert_defs] >> load_meta >> load_attr >> gen_integrity
+```
+
+**Notes**
+
+* Wire DB via Airflow connection (e.g., `Conn ID = autonomy_db`).
+* Replace TODOs with repo utils (SQLAlchemy/psycopg2/Snowflake connector).
+* Idempotency: use UPSERT/MERGE.
+
+---
+
+## 3) FastAPI Router Skeleton
+
+> Save as `apis/autonomy.py` and include it in your main app (`app.include_router(router, prefix="/api/autonomy")`).
+
+```python
+from fastapi import APIRouter, Query, HTTPException
+from typing import Optional, List, Dict, Any
+
+router = APIRouter(tags=["autonomy"])
+
+# Inject a DB session/connection via dependency in your app framework
+
+def get_db():
+    # TODO: return DB session/conn
+    raise NotImplementedError
+
+@router.get("/logs/search")
+def search_logs(
+    attr_key: str = Query(..., description="Attribute key to filter"),
+    attr_value: str = Query(..., description="Attribute value to match"),
+    limit: int = Query(100, ge=1, le=1000),
+) -> List[Dict[str, Any]]:
+    db = get_db()
+    # Example SQL; adapt to your driver
+    sql = (
+        "SELECT m.* FROM log_meta m "
+        "JOIN log_attr a ON a.log_id = m.log_id "
+        "WHERE a.attr_key = %s AND a.attr_value = %s "
+        "ORDER BY m.captured_at DESC LIMIT %s"
+    )
+    # rows = db.execute(sql, (attr_key, attr_value, limit)).fetchall()
+    rows = []  # TODO
+    return [dict(r) for r in rows]
+
+@router.get("/taxonomies/v4")
+def list_taxonomy(parent_tax_id: Optional[int] = None) -> List[Dict[str, Any]]:
+    db = get_db()
+    if parent_tax_id is None:
+        sql = "SELECT * FROM taxonomy_v4 WHERE parent_tax_id IS NULL ORDER BY name"
+        params = ()
+    else:
+        sql = "SELECT * FROM taxonomy_v4 WHERE parent_tax_id = %s ORDER BY name"
+        params = (parent_tax_id,)
+    # rows = db.execute(sql, params).fetchall()
+    rows = []  # TODO
+    return [dict(r) for r in rows]
+
+@router.post("/attributes/define")
+def define_attribute(body: Dict[str, Any]):
+    # body: {attr_key, dtype, required, allowed_values?, description?}
+    db = get_db()
+    sql = (
+        "INSERT INTO attr_def(attr_key, dtype, required, allowed_values, description) "
+        "VALUES (%s, %s, %s, %s, %s) "
+        "ON CONFLICT (attr_key) DO UPDATE SET dtype=EXCLUDED.dtype, required=EXCLUDED.required, "
+        "allowed_values=EXCLUDED.allowed_values, description=EXCLUDED.description"
+    )
+    # db.execute(sql, (...)); db.commit()
+    return {"status": "ok"}
+```
+
+**Notes**
+
+* Replace `get_db()` with your project’s DB layer (SQLAlchemy/Pool).
+* Consider RBAC: restrict POST/define to authorized users.
+* Add multi-attribute filter variant later (AND semantics across keys).
+
+---
+
+## 4) ER Diagram (Mermaid)
+
+> Paste into Confluence/Jira or keep here for reference.
+
+```mermaid
+erDiagram
+  taxonomy_v4 {
+    BIGINT tax_id PK
+    VARCHAR version
+    VARCHAR name
+    BIGINT parent_tax_id FK
+    TEXT description
+    TIMESTAMP created_at
+  }
+  log_meta {
+    BIGINT log_id PK
+    VARCHAR source_system
+    TEXT uri
+    TIMESTAMP captured_at
+    BIGINT size_bytes
+    CHAR checksum_sha256
+    BIGINT tax_id FK
+  }
+  attr_def {
+    VARCHAR attr_key PK
+    VARCHAR dtype
+    BOOLEAN required
+    TEXT allowed_values
+    TEXT description
+  }
+  log_attr {
+    BIGINT log_id FK
+    VARCHAR attr_key FK
+    TEXT attr_value
+  }
+  integrity_report {
+    BIGINT report_id PK
+    BIGINT log_id FK
+    VARCHAR status
+    TEXT details
+    TIMESTAMP created_at
+  }
+
+  taxonomy_v4 ||--o{ taxonomy_v4 : parent
+  taxonomy_v4 ||--o{ log_meta : categorizes
+  log_meta ||--o{ log_attr : has
+  attr_def ||--o{ log_attr : defines
+  log_meta ||--o{ integrity_report : assessed_by
+```
+
+---
+
+## 5) Folder Layout Suggestion
+
+```
+elt-pipeline/
+├─ apis/
+│  └─ autonomy.py
+├─ airflow/
+│  └─ dags/
+│     └─ autonomy_logs_ingest.py
+├─ db/
+│  └─ migrations/
+│     └─ 001_autonomy_log_poc.sql
+└─ docs/
+   └─ autonomy_log_poc.md  (paste ERD + runbook)
+```
+
+---
+
+## 6) Run Notes (PoC)
+
+* **DB**: run the SQL migration first. If using Alembic, convert DDL accordingly.
+* **Airflow**: set connection `autonomy_db` → points to the DB above.
+* **API**: mount the router; verify `GET /api/autonomy/logs/search?attr_key=vehicle_model&attr_value=D11` returns rows after a DAG run.
+* **Integrity**: for PoC, mark PASS when required attrs exist + checksum matches if provided.
+
+---
+
+## 7) Open Questions / Dependencies
+
+* Final **taxonomy v4** structure from Peter.
+* ECM **manifest/attribute feed** shape and access method.
+* Target **DB engine** (Snowflake vs Postgres) to finalize types/merge semantics.
