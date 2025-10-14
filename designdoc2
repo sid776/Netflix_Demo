@@ -1,0 +1,116 @@
+Autonomy Log Database – PoC Design Document
+1. Overview
+
+This document outlines the proof-of-concept (PoC) design for the Autonomy Log Database, which aims to organize, validate, and make accessible log data from the Autonomy ECM system. The focus is to establish a schema that supports taxonomy-based categorization, attribute-level tagging, and integrity validation while providing scalable ingestion and query capabilities.
+
+Goals
+
+Create a structured schema for log metadata and attributes.
+
+Enable attribute-based queries for analytics and validation.
+
+Build a basic ingestion workflow using Airflow.
+
+Provide initial API endpoints for metadata retrieval.
+
+Out of Scope
+
+Full-scale production integration.
+
+Backfill of historical logs.
+
+Role-based access controls and UI dashboards.
+
+2. Current Landscape
+
+Logs are currently stored in ECM with embedded metadata and ptags. The existing taxonomy system (versions prior to v4) defines hierarchical relationships, but these taxonomies are not yet aligned with attribute-based querying. Integrity checks exist in separate systems and are not linked directly to the log entries.
+
+A review of the existing ECM entity-relationship diagram (ERD) will confirm the connections between ptags, raw logs, and integrity reports.
+
+3. Proposed Schema (PoC)
+
+The proposed schema includes the following tables:
+
+Table	Purpose
+taxonomy_v4	Stores taxonomy definitions with parent-child relationships.
+log_meta	Contains metadata for each log (source, URI, size, checksum, taxonomy link).
+attr_def	Defines allowable attributes, types, and validation rules.
+log_attr	Stores actual key-value pairs for log attributes.
+integrity_report	Captures integrity status and validation results per log.
+
+A view named taxonomy_current will map to taxonomy_v4 to ensure downstream compatibility.
+
+ER Diagram (Simplified)
+erDiagram
+  taxonomy_v4 ||--o{ log_meta : categorizes
+  log_meta ||--o{ log_attr : has
+  attr_def ||--o{ log_attr : defines
+  log_meta ||--o{ integrity_report : assessed_by
+4. Ingestion Workflow (Airflow)
+
+A new Airflow DAG, autonomy_logs_ingest, will automate log ingestion and validation.
+
+Steps:
+
+Fetch metadata or manifest from ECM.
+
+Upsert taxonomy and attribute definitions.
+
+Load or update log metadata into log_meta.
+
+Insert corresponding log_attr entries.
+
+Generate an integrity report for each log.
+
+Design Considerations:
+
+Each task will be idempotent (safe to re-run).
+
+Database connections will use environment variables or Airflow connections.
+
+5. API Endpoints (FastAPI)
+
+A minimal API layer will expose log and taxonomy data.
+
+Endpoint	Method	Description
+/logs/search	GET	Fetch logs filtered by attribute key/value.
+/taxonomies/v4	GET	Retrieve taxonomy hierarchy.
+/attributes/define	POST	Add or modify attribute definitions.
+
+Future enhancements may include complex filtering, pagination, and integrity-based search.
+
+6. Data Validation and Integrity Rules
+
+Required attributes must be present for every log based on attr_def.
+
+Integrity validation checks for completeness and checksum consistency.
+
+integrity_report tracks PASS/WARN/FAIL status for each log.
+
+7. Dependencies and Risks
+
+Dependencies:
+
+Access to the ECM ERD and metadata feed for alignment.
+
+Availability of a running Airflow environment.
+
+Confirmation of database target (Postgres/Snowflake).
+
+Risks:
+
+Missing or inconsistent attribute definitions.
+
+Delays in access to existing ECM documentation.
+
+8. Next Steps
+Step	Description	Owner	Target
+1	Confirm ECM ERD and attribute feed format	Team	Week 1
+2	Develop SQL or Alembic migration script	Siddharth	Week 1
+3	Add DAG skeleton to repo and connect DB	Siddharth	Week 2
+4	Implement /logs/search API	Siddharth	Week 2
+5	Test with sample manifest	Team	Week 3
+6	Document and finalize design	Team	Week 4
+9. Summary
+
+This PoC will validate a schema and workflow for attribute-based log management, providing a scalable model to extend for future releases. It balances simplicity with alignment to existing ECM data and enables fast experimentation with taxonomy, attributes, and validation logic.
