@@ -1,0 +1,148 @@
+# Autonomy Log Database – PoC Design Document
+
+## 1. Context & Goals
+
+The goal of this PoC is to establish a structured database layer for Autonomy ECM logs that allows:
+
+* Storage of log metadata with linkage to taxonomy.
+* Storage of attributes (ptags) in a governed way.
+* Integrity validation per log (checksum, required attributes).
+* Ability to query logs based on attributes via API.
+* Airflow-based ingestion pipeline for incremental updates.
+
+**In Scope (PoC):**
+
+* New schema (`taxonomy_v4`, `log_meta`, `attr_def`, `log_attr`, `integrity_report`).
+* Basic Airflow DAG to ingest new logs.
+* Minimal FastAPI endpoints for querying logs.
+* ERD and ingestion flow diagrams.
+
+**Out of Scope (PoC):**
+
+* Backfill of historical logs.
+* Full production-grade logging/monitoring.
+* Role-based access control and UI dashboards.
+* Log processor logic upstream of ingestion.
+
+## 2. Current State (ECM Side)
+
+* Legacy taxonomy exists (version < v4). It remains read-only.
+* Logs are available via ECM (API or manifest). Attributes (ptags) are part of metadata feed.
+* Integrity reports exist separately and link back to logs.
+* Existing ERD for ECM needs to be referenced (pending link from stakeholders).
+
+## 3. Proposed Schema (PoC)
+
+Tables to be created:
+
+* `taxonomy_v4`
+* `log_meta`
+* `attr_def`
+* `log_attr`
+* `integrity_report`
+
+A view `taxonomy_current` will alias `taxonomy_v4` for downstream flexibility.
+
+## 4. Entity-Relationship Diagram
+
+```mermaid
+erDiagram
+  taxonomy_v4 {
+    BIGINT tax_id PK
+    VARCHAR version
+    VARCHAR name
+    BIGINT parent_tax_id FK
+    TEXT description
+    TIMESTAMP created_at
+  }
+  log_meta {
+    BIGINT log_id PK
+    VARCHAR source_system
+    TEXT uri
+    TIMESTAMP captured_at
+    BIGINT size_bytes
+    CHAR checksum_sha256
+    BIGINT tax_id FK
+  }
+  attr_def {
+    VARCHAR attr_key PK
+    VARCHAR dtype
+    BOOLEAN required
+    TEXT allowed_values
+    TEXT description
+  }
+  log_attr {
+    BIGINT log_id FK
+    VARCHAR attr_key FK
+    TEXT attr_value
+  }
+  integrity_report {
+    BIGINT report_id PK
+    BIGINT log_id FK
+    VARCHAR status
+    TEXT details
+    TIMESTAMP created_at
+  }
+
+  taxonomy_v4 ||--o{ taxonomy_v4 : parent
+  taxonomy_v4 ||--o{ log_meta : categorizes
+  log_meta ||--o{ log_attr : has
+  attr_def ||--o{ log_attr : defines
+  log_meta ||--o{ integrity_report : assessed_by
+```
+
+## 5. Ingestion Flow (Airflow DAG)
+
+**DAG Name:** `autonomy_logs_ingest`
+
+**Steps:**
+
+1. Fetch manifest or ECM API feed.
+2. Load or merge taxonomy_v4 entries.
+3. Load or update attr_def entries.
+4. Insert into log_meta for new logs.
+5. Insert log_attr entries for attributes.
+6. Generate integrity_report rows.
+
+**Idempotency:** Use UPSERT/MERGE logic to avoid duplicates.
+
+## 6. FastAPI Endpoints
+
+| Endpoint                                 | Purpose                             |
+| ---------------------------------------- | ----------------------------------- |
+| `GET /logs/search?attr_key=&attr_value=` | Query logs matching attribute       |
+| `GET /taxonomies/v4`                     | Browse taxonomy entries             |
+| `POST /attributes/define`                | Create/update attribute definitions |
+
+Optional future extension: multi-attribute AND queries.
+
+## 7. Integrity & Data Quality
+
+* Each log ingested must have required attributes (`attr_def.required = true`).
+* `integrity_report.status` set to PASS/WARN/FAIL depending on attribute completeness and checksum validation.
+
+## 8. Next Steps & Tasks
+
+1. Confirm existing ECM ERD and attribute feed format.
+2. Implement DB migration script / Alembic.
+3. Place Airflow DAG skeleton in repo and wire DB connection.
+4. Implement FastAPI router with at least `/logs/search` endpoint.
+5. Test DAG on sample manifest.
+6. Generate diagrams and attach to Jira/ADO.
+
+## 9. Risks & Dependencies
+
+* Access to existing ECM ERD and sample manifest.
+* Docker/Airflow environment readiness.
+* Confirmation of target DB engine (Snowflake/Postgres).
+
+## 10. Delivery Plan (Target Dates)
+
+* **Week 1 (PoC Kickoff):** Schema + DAG skeleton.
+* **Week 2:** API endpoint + integrity reporting.
+* **Week 3:** Diagram and design doc review.
+* **Week 4+:** Convert to formal stories and begin full implementation.
+
+---
+
+This document serves as the draft design reference for PoC. Update as feedback is received and taxonomy_v4 is confirmed.
