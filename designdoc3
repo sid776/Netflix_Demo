@@ -1,0 +1,107 @@
+# 1. Scope of the document
+
+This document defines the Proof of Concept (PoC) design for introducing a new metadata ingestion and querying layer for the Autonomy Log Database. The goal is to enable attribute-based log metadata storage and retrieval without modifying existing PTAG or annotation systems. This design outlines the approach for schema additions, ingestion workflow, and API capabilities.
+
+# 2. Define
+
+## 2.1 Scope of work
+
+Design and implement new database tables (log_metadata, attr_def, log_attr) linked to raw_data via log_id. Build ingestion logic to process JSON metadata files dropped alongside PTAG uploads and expose basic attribute query APIs.
+
+## 2.2 Use cases
+
+* Ingest metadata JSON at time of log upload.
+* Allow field engineers to attach tags at ingest without waiting for database entry.
+* Support post-ingest updates through crawler re-runs.
+* Query logs by attributes similar to PTAG metadata API.
+
+## 2.3 Requirements
+
+* Reuse existing taxonomy table; no v4 work in PoC.
+* New tables exist separately from PTAG to avoid impacting current behavior.
+* Foreign key or soft reference linking to raw_data.log_id.
+* Airflow DAG performs idempotent upsert of attributes.
+* API returns logs filtered by key/value attributes.
+
+## 2.4 Out of scope
+
+* Changing existing PTAG or annotation tables.
+* Modifying taxonomy structure.
+* Full PTAG deprecation rollout.
+* Annotation and metrics pipeline tables.
+
+## 2.5 Dependencies
+
+* Access to existing ERD and database connection for reference.
+* Airflow environment available for DAG deployment.
+* Sample JSON metadata payloads from log processor.
+
+# 3. Describe
+
+## 3.1 Pseudocode
+
+```
+for each JSON metadata file detected:
+  extract log_id reference
+  upsert base record into log_metadata table
+  for each key,value in JSON:
+    if key not in attr_def:
+      insert into attr_def
+    upsert into log_attr with log_id, key, value
+```
+
+## 3.2 SW Diagrams
+
+[Insert ERD snapshot here with color-coded sections: Green = new metadata scope, Red = annotation tables, Orange = metrics tables. Highlight raw_data, ptag, integrity_report, analytics_report, log_metadata, log_attr.]
+
+# 4. Characterize
+
+## 4.1 How to test
+
+* Unit test ingestion parser with sample JSON.
+* Run Airflow DAG manually with test payload.
+* Query API with sample filters to verify correct log_id return.
+
+## 4.2 Qualitative testing
+
+* Confirm no legacy table modified during schema updates.
+* Visually inspect ERD to ensure new tables link only via raw_data.
+
+## 4.3 Metrics
+
+* Measure ingestion run time per file.
+* Track number of records inserted vs updated.
+* Monitor API response latency.
+
+# 5. As Built assessment
+
+(To be completed after implementation)
+
+## 5.1 Verification
+
+* Verify schema deployed matches design.
+* Confirm API returns expected data.
+
+## 5.2 Validation
+
+* Validate ingestion behavior with real sample JSON from field team.
+* Confirm updates reflect on re-run.
+
+## 5.3 Known limitations and issues
+
+* PTAG still in use; full deprecation plan pending.
+* Taxonomy reuse may introduce naming conflicts in future phases.
+
+# 6. Next steps
+
+* Implement extended API capabilities.
+* Create PTAG deprecation migration document.
+* Expand attribute governance and validation rules.
+
+# 7. References
+
+* Existing PTAG API documentation.
+* Meeting notes and ERD annotations.
+* Autonomy ECM data upload workflow guide.
+* Existing PTAG API documentation
+* ERD annotation from meeting discussion
