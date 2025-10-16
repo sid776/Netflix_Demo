@@ -1,0 +1,149 @@
+# Revision History
+
+| Rev | Date       | Author      | Comment       |
+| --- | ---------- | ----------- | ------------- |
+| 0.1 | YYYY.MM.DD | Siddharth J | Initial Draft |
+
+# Approvals
+
+| Rev | Date       | Approver | Role      | Status  |
+| --- | ---------- | -------- | --------- | ------- |
+| 0.1 | YYYY.MM.DD | TBD      | Tech Lead | Pending |
+
+# 1. Scope of the Document
+
+This document serves as the feature design documentation for introducing a new metadata ingestion and querying layer for the Autonomy Log Database, aligned with existing ECM data flows.
+
+# 2. Overview
+
+## 2.1 Problem Statement
+
+Current PTAG and integrity tables do not support dynamic attribute tagging at ingest or post-ingest update cycles. There is no unified structure for analytics and metadata attributes.
+
+## 2.2 Objective
+
+Implement a parallel metadata structure to PTAG to enable flexible attribute tagging and query capabilities without modifying legacy systems.
+
+## 2.3 Timeline
+
+| Item                  | Est. Completion |
+| --------------------- | --------------- |
+| Design Doc            | Week 1          |
+| DB Migration          | Week 1          |
+| Airflow Ingestion DAG | Week 2          |
+| API Implementation    | Week 2          |
+| Verification          | Week 3          |
+
+## 2.4 Background
+
+Raw logs flow into ECM and PTAG metadata is linked to raw_data. Integrity and analytics reports exist but are fragmented across multiple tables. Existing ERD shows annotation and metrics areas that are out of scope.
+
+## 2.5 Requirements
+
+* New tables: log_metadata, attr_def, log_attr
+* Link via raw_data.log_id only
+* Reuse existing taxonomy; no schema changes to legacy tables
+* Airflow ingestion via idempotent upsert of JSON metadata
+* Attribute search API endpoint with PTAG parity
+
+## 2.6 Use Cases
+
+* Field engineer adds attributes pre-ingest and they land in metadata table
+* Post-ingest attribute updates trigger crawler re-processing
+* API query: filter logs by key/value attributes
+
+## 2.7 User Interaction
+
+Attributes supplied via JSON placed alongside PTAG during upload. Crawler processes and API exposes filtered results.
+
+## 2.8 Assumptions
+
+* JSON metadata contains log_id reference
+* Airflow environment is configured
+
+## 2.9 In-Scope
+
+* Schema creation for new metadata tables
+* Ingest DAG and basic API implementation
+
+## 2.10 Out-of-Scope
+
+* Annotation pipeline tables
+* Metrics dashboarding and full PTAG deprecation
+
+# 3. Design
+
+## 3.1 High-Level Design
+
+A new metadata ingestion pipeline runs parallel to PTAG. JSON metadata files are processed by Airflow, inserted into new tables, and linked to raw_data via log_id.
+
+## 3.2 Detailed Design
+
+Tables:
+
+* log_metadata: one row per log metadata record
+* attr_def: defines allowable attributes
+* log_attr: key/value attributes linked by log_id
+  Linking is done without modifying PTAG. ERD will show new components highlighted in green.
+
+## 3.3 Database/API
+
+```
+for each JSON metadata file:
+  parse file
+  upsert into log_metadata
+  for each key,value:
+    ensure attr_def exists
+    upsert into log_attr
+```
+
+API `/logs/search` will accept filters and return matching raw_data entries.
+
+## 3.4 User Story 1 Design
+
+Design document and schema creation.
+
+## 3.5 User Story 2 Design
+
+Airflow DAG for ingestion and upsert logic.
+
+## 3.6 Dependencies and Risks
+
+Dependent on database connectivity, sample JSON availability. Risk: legacy schema conflicts.
+
+## 3.7 Gaps
+
+Need final confirmation on JSON format and ERD reference.
+
+# 4. Testing
+
+## 4.1 Unit Tests
+
+Parser logic and upsert behavior.
+
+## 4.2 Integration Tests
+
+DAG end-to-end ingest with sample JSON and API query validation.
+
+# 5. Deployment
+
+Deploy schema migration, then Airflow DAG, then API endpoints. Monitor ingestion.
+
+# 6. Work Estimate
+
+Total 2–3 weeks for PoC implementation including tests and API.
+
+# 7. Evidence of Completion
+
+To be filled after completion with links to logs, API responses, and DAG runs.
+
+# 8. References
+
+* PTAG API docs
+* ERD screenshots
+* Meeting notes annotated with green scope
+* Existing PTAG API documentation.
+* Meeting notes and ERD annotations.
+* Autonomy ECM data upload workflow guide.
+* Existing PTAG API documentation
+* ERD annotation from meeting discussion
