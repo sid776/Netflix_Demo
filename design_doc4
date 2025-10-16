@@ -1,0 +1,56 @@
+Feature 1241594 – Autonomy Log Metadata PoC Design Document
+Revision History
+Rev	Date	Author	Comment
+0.1	2025.10.16	Siddharth J	Initial draft with parallel metadata design
+1. Scope of the Document
+This document describes the PoC plan for introducing a separate metadata layer alongside the existing PTAG workflow. The goal is to allow metadata to be attached and updated independently without making structural changes to PTAG or annotation tables.
+2. Overview
+2.1 Problem Statement
+Currently, once PTAG assigns base metadata at ingest, there is no straightforward way to enrich or correct metadata afterward. Metadata exists across PTAG, integrity, and analytics tables, which are not ideal for flexible attribute-based queries.
+2.2 Objective
+Create a metadata layer tied to raw_data.log_id that can receive attribute updates from JSON metadata files and support querying based on those attributes. This gives room to evolve metadata practices without touching PTAG directly.
+2.3 Requirements
+• Introduce log_metadata, log_attr, and attr_def tables
+• Link them through raw_data.log_id
+• Use Airflow for ingestion of JSON metadata
+• Allow re-ingestion if metadata changes
+• Provide an API that filters by attribute values
+• Avoid modifying PTAG or annotation structures
+2.4 Background
+During discussions, PTAG was considered stable and should remain untouched. Logs consistently use log_id as a reference point. By anchoring metadata to log_id, new attributes can be introduced progressively without disrupting the established flow.
+3. Design
+3.1 High-Level Design
+Metadata JSON files accompany log uploads. An Airflow DAG monitors for these files and writes values into the new metadata tables. This setup allows metadata to be present from day one or updated later by simply dropping a new JSON file and letting the DAG process it.
+3.2 Detailed Design
+The design relies on three tables:
+• log_metadata stores one record per log with structured fields
+• log_attr stores variable attributes as key/value pairs per log_id
+• attr_def tracks attribute names and optional validation characteristics
+This layout keeps the schema flexible but still traceable to log_id.
+3.3 API Layer
+The API will let users filter logs by specifying attributes. The backend uses log_attr to resolve matching log_id records and return log details. This mirrors PTAG-style querying but avoids expanding PTAG tables.
+3.4 Ingestion Process
+The Airflow DAG detects JSON files placed with log batches, validates structure, then performs an upsert. If a log's metadata appears a second time, only changed values are updated, keeping the database clean.
+3.5 Work Breakdown by Story
+Development will follow a practical order:
+• Design alignment
+• Schema migration
+• Ingestion implementation
+• API development
+• Re-ingestion support for updates
+3.6 Gaps and Clarifications
+Pending alignment points include:
+• Final JSON format confirmation
+• Consistent inclusion of log_id in metadata files
+• Clarification on how new attribute names will be governed
+• Updated ERD circulation after tables are created to confirm alignment
+4. Testing
+Testing will cover JSON parsing correctness, ingestion behavior, and API response verification. We will manually inspect rows in log_metadata and log_attr after test runs and confirm that queries return the expected log entries.
+5. Deployment
+Deployments will start with the schema changes, then introduce the DAG in a controlled manner. Once ingestion is confirmed, the API can be enabled. Since this layer runs alongside PTAG, any rollback is simple.
+6. Work Estimate
+The PoC is expected to span three sprints: initial setup and schema work, ingestion and API build-out, followed by validation and handover.
+7. Evidence of Completion
+The work will be considered complete after successful ingestion of sample metadata, correct population of metadata tables, and verified responses from the API using attribute filters.
+8. References
+Internal PTAG reference notes, ECM ingestion discussion material, and ERD walkthrough served as inputs for this design.
