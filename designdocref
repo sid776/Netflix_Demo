@@ -1,0 +1,11 @@
+Feature 1241594 – Autonomy Log Metadata (Lightweight Design Summary)
+Revision History
+Rev	Date	Author	Description
+1.0		S. Jena	Initial draft after design discussion
+Approvals
+Rev	Approver	Role	Status
+1.0			Pending
+Scope / Problem Statement / Background
+Current ECM logs are stored with PTAG metadata and separate integrity reporting tables. There is no clean attribute-level schema that allows flexible filtering or tagging before ingest. Teams currently rely on PTAG and integrity tables, but they are fragmented and not aligned with a unified metadata model. The goal is to introduce a parallel metadata table that behaves similarly to PTAG but is more dynamic and future-proof for attribute tagging.
+Design Proposal
+The approach is to introduce a new log metadata table that sits alongside raw logs similar to PTAG, but allows direct attribute injection at ingest time without modifying PTAG logic. This metadata schema will track source, checksum, size, taxonomy tags and ad-hoc attributes. An Airflow DAG will be responsible for detecting new entries, inserting into the new table, and linking to raw logs by reference ID. A corresponding FastAPI route will provide filtered access by attributes and taxonomy keys. Story items will include ERD validation, SQL migration, DAG skeleton setup, and API stub additions.
