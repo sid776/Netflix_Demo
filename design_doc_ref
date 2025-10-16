@@ -1,0 +1,325 @@
+<DevopsID> – Feature Name 
+
+<Devops link> 
+
+ 
+
+Please make a copy before editing! 
+
+Instructions: 
+
+Fill in each section 
+
+Request for review by tagging reviewers in a comment 
+
+Share the doc with the team 
+
+Schedule a design review in a Standup 
+
+Update Detailed Desing Section with each related story 
+
+Update with evidence of completion 
+
+Delete these instructions. 
+
+ 
+
+Revision History 
+
+Rev 
+
+Date 
+
+Author 
+
+Comment 
+
+1.0 
+
+YYYY.MM.DD 
+
+Name 
+
+Inception 
+
+ 
+
+ 
+
+ 
+
+ 
+
+ 
+
+Approvals 
+
+Rev 
+
+Date 
+
+Approver 
+
+Role 
+
+Status 
+
+1.0 
+
+YYYY.MM.DD 
+
+Name 
+
+Example: Architect, Tech Lead, Engineer, Customer, Stakeholder, etc. 
+
+Pending / Approved 
+
+ 
+
+ 
+
+ 
+
+ 
+
+ 
+
+ 
+
+ 
+
+​​Contents 
+
+​ 
+
+​ 
+
+​ 
+
+​ 
+
+​ 
+
+​ 
+
+​ 
+
+​ 
+
+​ 
+
+​ 
+
+​ 
+
+​ 
+
+​ 
+
+​ 
+
+​ 
+
+​ 
+
+​ 
+
+​ 
+
+​ 
+
+​ 
+
+​ 
+
+​ 
+
+​​ 
+
+ 
+
+Scope of the Document 
+
+This document serves as a design document for the feature in the title 
+
+ 
+
+Overview 
+
+Problem Statement 
+
+Describe the goal of this design in one or two sentences.  Include links to any Feature Requests if available 
+
+Objective 
+
+Describe the goal of this design in one or two sentences. 
+
+Timeline 
+
+Update this section after completing the design.   
+
+Activity 
+
+Days 
+
+Estimated Completion Date 
+
+Design Doc 
+
+ 
+
+ 
+
+Implementation [task 1] 
+
+ 
+
+ 
+
+Implementation [task 2] 
+
+ 
+
+ 
+
+Customer PoC 
+
+ 
+
+ 
+
+Implementation [task n] 
+
+ 
+
+ 
+
+Verification 
+
+ 
+
+ 
+
+Documentation 
+
+ 
+
+ 
+
+Sign Off 
+
+ 
+
+ 
+
+ 
+
+Background 
+
+This section identifies background information necessary to understand this design.  
+
+Requirements 
+
+Give a summary in bullet points and link to a requirements document or DevOps ticket if needed  
+
+Requirement 1 
+
+Requirement 2 
+
+Use cases 
+
+How will this feature be used, list all potential use cases.  Include any additional information that might impact design decisions 
+
+User Interaction 
+
+Work with requesting team to turn the use cases into interaction diagrams.  What steps will the user take when leveraging this design.  This is an important step that will set the direction for development 
+
+Assumptions 
+
+What assumptions are being made that impact the design? 
+
+In-Scope 
+
+Document what is intended to be included in the design 
+
+Out-of-Scope 
+
+Document what is intended to be excluded from the design 
+
+ 
+
+ 
+
+ 
+
+Design 
+
+The section covers the design and implementation of the Feature 
+
+High-Level Design 
+
+Lay out the overall approach and the possible design choices. What are the main design decisions? What are the pros and cons of each option?  A high level black box diagram should be included 
+
+Detailed Design 
+
+Describe your design in detail. Explain the pros and cons of your design. List open problems and caveats. Include one or more of these diagrams as appropriate: system architecture, API definition, data flow, control flow, sequence, interaction, etc. Clearly identify and motivate your design decisions. Do not include implementation details such as code.  A separate section may be created for each User Story.  If that is not practical, then the specific user stories in scope should be referenced. 
+
+Detailed Design – Database/API (if applicable) 
+
+Document any API updates or table changes if applicable.  If no changes are required but the scope of the feature includes data discoverability document data flow.  Be explicit.  Show any additional columns and make sure to trace data relationships to indicate how a user/system will interact with the data.   
+
+User Story 1 Design 
+
+If Applicable, add detailed design elements covered by this user story 
+
+User Story 2 Design 
+
+If Applicable, add detailed design elements covered by this user story 
+
+Dependencies and Risks 
+
+What other systems and libraries does this design depend on? How will their failures be handled? Are we depending on systems still under development and are we considering those risks? 
+
+Gaps 
+
+Open design elements that need addressed.  Plan to address should be documented 
+
+ 
+
+ 
+
+Testing 
+
+What is your strategy for testing your implementation? How will you prevent regressions? Do you need to validate using real world data? Please note that manual testing is not a valid strategy. 
+
+Unit Tests 
+
+Identify which unit tests needed to be implemented for a robust design 
+
+Integration Tests 
+
+Identify which test need to be run to verify correct interaction with the whole system 
+
+ 
+
+Deployment  
+
+How will you roll out the feature? How will you know if something goes wrong? Which deployment process is used, What github actions are used? 
+
+ 
+
+Work Estimate 
+
+Itemize and estimate the implementation work required (number of weeks). 
+
+ 
+
+Evidence of Completion 
+
+For each test outlined in the testing section, show or link to evidence of completion 
+
+ 
+
+Reference  
+
+Notes 
