@@ -1,0 +1,58 @@
+1A Pipeline – Autonomy Log Metadata Table Design Document
+Author: Siddharth Jena
+DevOps Ticket: 1241594
+Status: Draft
+
+Revision History
+Rev.	Date	Description
+1.0		Initial Design Document Draft
+Approvals
+Rev.	Date	Approver	Role / Status
+1.0			Pending
+1. Scope / Problem Statement / Background
+The current ECM pipeline uses PTAG to assign metadata at the time of upload. Once the data is loaded, there is no clean way to append or modify attributes without directly changing core PTAG tables. Teams performing analysis often identify conditions post-ingest (e.g., weather, logging conditions, field anomalies), which cannot be captured today without schema intervention. This PoC aims to introduce a parallel metadata table that stores flexible key-value attributes linked to raw_data.log_id. This allows gradual transition while PTAG remains untouched.
+2. Design Proposal
+A new metadata structure will be introduced alongside PTAG. The structure consists of a core metadata table and an attribute table that stores key-value pairs per log. The ingestion pathway will be updated through an Airflow DAG to detect metadata JSON and write entries. API logic will be extended so that logs can be queried based on attributes without modifying PTAG endpoints. This keeps integration safe during early phases while enabling downstream flexibility.
+3. Timeline
+Activity	Estimated Effort (Days)	Target Completion
+Design Document		
+Metadata Table Migration		
+Airflow DAG Integration		
+API Extension		
+Validation and Test		
+Documentation Wrap-Up		
+Sign Off		
+4. Requirements
+•	Metadata tagging must not interfere with PTAG.
+•	JSON-based ingestion through Airflow DAG.
+•	API filter support for attribute-based queries.
+5. Use Cases
+•	Apply ‘snowy condition’ attribute to a log after ingest.
+•	Query logs by attributes like weather, condition, speed thresholds.
+6. In-Scope
+•	New metadata table creation.
+•	DAG-based ingestion for attribute JSON.
+•	API extension for attribute query.
+7. Out-of-Scope
+•	Replacing PTAG immediately.
+•	UI integration changes.
+8. High-Level Design
+The metadata table holds a single row per log. A related attribute table holds attribute key-value pairs. Airflow picks up metadata from JSON manifest and inserts or updates records. The API layer fetches log_ids by attribute filters and returns matching entries.
+9. Detailed Design
+Table: log_metadata (id, log_id, created_at, updated_at). Table: log_attr (id, log_id, attribute_key, attribute_value). Migration will be handled via Alembic or direct SQL depending on environment. DAG will include tasks: detect → parse JSON → upsert into log_metadata and log_attr. API: extend existing service or add new endpoint group for metadata queries.
+10. Dependencies and Risks
+•	Access to raw_data.log_id mapping confirmed.
+•	PTAG remains active; no schema conflict expected.
+•	Risk: metadata JSON might not follow expected key conventions.
+11. Testing Strategy
+•	Validate ingestion with sample JSON file.
+•	Confirm metadata table rows reflect inserted attributes.
+•	Test API response using attribute filter inputs.
+12. Deployment
+Migration scripts rolled out first, followed by DAG deployment and API update rollout. Rollback is limited to dropping or disabling metadata tables and pausing DAG.
+13. Work Estimate
+Based on effort breakdown, the work aligns with ~240 engineering hours. This includes schema work, DAG integration, API development, testing, and documentation closure.
+14. Evidence of Completion
+Evidence will include: JSON ingested successfully, metadata table populated, API returns filtered log_ids. Logs with new attributes visible in database queries.
+15. Notes
+PTAG coexists with the new metadata structure initially. Future iterations may evaluate merging or deprecating PTAG once metadata layer proves stable.
