@@ -1,0 +1,57 @@
+5.4 User Story 1 – Schema & Table Creation
+
+Scope:
+Create new metadata tables (log_metadata_header, log_metadata_attr) aligned with PTAG linking pattern, but independent.
+
+Design Notes:
+
+Header table contains one row per ECM log.
+
+Attributes table stores key-value pairs flattened (one row per attribute per log).
+
+Linked via raw_log_id.
+
+Schema migration created via Alembic.
+
+No PTAG rewrite in this phase – tables run in parallel.
+
+5.5 User Story 2 – DAG for Metadata Ingest
+
+Scope:
+Airflow DAG detects JSON metadata drop next to ECM log and ingests attributes.
+
+Design Notes:
+
+DAG triggers on file drop (*.json) matching ECM file name.
+
+Validates JSON keys against a definition list.
+
+Inserts into log_metadata_header, then log_metadata_attr.
+
+On re-upload, DAG should upsert (not duplicate).
+
+5.6 User Story 3 – API Endpoint
+
+Scope:
+Expose /log-metadata/search?key=&value= as FastAPI route.
+
+Design Notes:
+
+Simple filter-based query on attributes table.
+
+Returns metadata + linked PTAG/log reference.
+
+Designed to be extended later with AND/OR filtering and pagination.
+
+5.7 User Story 4 – Validation & Backward Compatibility
+
+Scope:
+Ensure new metadata flow does not break existing PTAG API or dashboards.
+
+Design Notes:
+
+PTAG remains active.
+
+Feature flag used to separate old vs new metadata tables.
+
+Both tables visible under unified API namespace for migration testing.
