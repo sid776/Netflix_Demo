@@ -1,325 +1,157 @@
-<DevopsID> – Feature Name 
+1. Scope of the Document
 
-<Devops link> 
+This document serves as the design reference and implementation plan for Feature 1241594 – Autonomy Log Database, owned by the AI Ecosystem – Data Pipeline team.
 
- 
+2. Overview
+2.1 Problem Statement
 
-Please make a copy before editing! 
+1AHS team requires a way to query ECM log data based on attributes, support metadata tagging at ingest, and store metadata as a structured table linked to raw logs.
 
-Instructions: 
+2.2 Objective
 
-Fill in each section 
+Create a new metadata table parallel to PTAG, ingest attributes via Airflow, expose via API, and ensure compatibility with future taxonomy-driven queries.
 
-Request for review by tagging reviewers in a comment 
+2.3 Timeline
+Activity	Days	Estimated Completion
+Design Doc	2	Week 1
+Implementation – Schema	4	Week 2
+Implementation – DAG/API	5	Week 3
+Customer PoC	3	Week 4
+Implementation – Polish	3	Week 5
+Verification	2	Week 6
+Documentation	1	Week 6
+Sign Off	1	Week 6
+3. Background
 
-Share the doc with the team 
+Current ECM pipeline stores logs with PTAG metadata. Integrity reports and annotations live in separate tables. Metadata tagging is limited, and PTAG is overloaded. The new attribute schema should sit parallel to PTAG without breaking existing queries.
 
-Schedule a design review in a Standup 
+4. Requirements
 
-Update Detailed Desing Section with each related story 
+Ability to store structured metadata for log files at ingest.
 
-Update with evidence of completion 
+Link metadata rows directly to raw log entries.
 
-Delete these instructions. 
+Support attribute key-value pairs similar to PTAG additional info, but structured.
 
- 
+Airflow-based ingest DAG to populate tables.
 
-Revision History 
+API endpoint to retrieve metadata via filters.
 
-Rev 
+4.1 Use Cases
 
-Date 
+Query all logs where attribute weather = snow.
 
-Author 
+Metadata modified after ingest should trigger re-index in table.
 
-Comment 
+PoC should allow uploading a JSON metadata sidecar alongside ECM logs.
 
-1.0 
+4.2 User Interaction
 
-YYYY.MM.DD 
+User uploads log data + attribute JSON.
 
-Name 
+Airflow detects file, ingests metadata into table.
 
-Inception 
+API allows GET /logs/search?attribute=....
 
- 
+4.3 Assumptions
 
- 
+ECM raw log table remains unchanged.
 
- 
+PTAG stays active temporarily; new metadata table runs parallel.
 
- 
+4.4 In-Scope
 
- 
+New table creation.
 
-Approvals 
+DAG ingestion.
 
-Rev 
+API read endpoint.
 
-Date 
+4.5 Out-of-Scope
 
-Approver 
+UI changes.
 
-Role 
+Backfill of historical logs.
 
-Status 
+PTAG deprecation.
 
-1.0 
+5. Design
+5.1 High-Level Design
 
-YYYY.MM.DD 
+A new log_metadata table will be created parallel to PTAG. Data ingestion happens through Airflow DAG triggered on new log uploads. Metadata is stored as row-per-attribute pair and linked via raw log ID.
 
-Name 
+5.2 Detailed Design
 
-Example: Architect, Tech Lead, Engineer, Customer, Stakeholder, etc. 
+Flow:
+File upload → JSON attributes detected → Airflow → Insert into log_metadata + link to raw_log.
 
-Pending / Approved 
+A lightweight FastAPI endpoint exposes /logs/search.
 
- 
+5.3 Database/API Design
 
- 
+Tables to be added:
 
- 
+log_metadata_header – one row per log file.
 
- 
+log_metadata_attr – key-value attributes for each log.
 
- 
+API:
 
- 
+GET /log-metadata/search?key=&value=
 
- 
+5.4 Dependencies and Risks
 
-​​Contents 
+Requires Airflow instance connectivity to database.
 
-​ 
+Requires agreement on metadata JSON schema.
 
-​ 
+Risk: Metadata JSON mismatch → ingestion failure.
 
-​ 
+5.5 Gaps
 
-​ 
+Decision pending: whether to enforce foreign keys or keep linkage loose.
 
-​ 
+Naming convention to align with PTAG not finalized.
 
-​ 
+Coordination with ECM pipeline for JSON location.
 
-​ 
+6. Testing
+6.1 Unit Tests
 
-​ 
+Validate schema creation migration.
 
-​ 
+Validate JSON parse → DB rows.
 
-​ 
+6.2 Integration Tests
 
-​ 
+Full ingest of sample log + JSON → Query via API → Expect metadata.
 
-​ 
+7. Deployment
 
-​ 
+Code merged via feature branch → deployment via standard Airflow+API CICD.
 
-​ 
+Monitor first runs via DAG logs.
 
-​ 
+8. Work Estimate
 
-​ 
+Total engineering effort estimated at 5 sprints, aligned with feature tracking entry.
 
-​ 
+9. Evidence of Completion
 
-​ 
+Link to design doc: (this document)
 
-​ 
+Link to DAG run logs: [To be added]
 
-​ 
+Link to migration PR: [To be added]
 
-​ 
+10. References
 
-​ 
+ADO Feature 1241594
 
-​​ 
+PTAG ERD source repo (internal)
 
- 
+Airflow ingestion pipeline spec (existing PTAG ingest code)
 
-Scope of the Document 
+11. Notes
 
-This document serves as a design document for the feature in the title 
-
- 
-
-Overview 
-
-Problem Statement 
-
-Describe the goal of this design in one or two sentences.  Include links to any Feature Requests if available 
-
-Objective 
-
-Describe the goal of this design in one or two sentences. 
-
-Timeline 
-
-Update this section after completing the design.   
-
-Activity 
-
-Days 
-
-Estimated Completion Date 
-
-Design Doc 
-
- 
-
- 
-
-Implementation [task 1] 
-
- 
-
- 
-
-Implementation [task 2] 
-
- 
-
- 
-
-Customer PoC 
-
- 
-
- 
-
-Implementation [task n] 
-
- 
-
- 
-
-Verification 
-
- 
-
- 
-
-Documentation 
-
- 
-
- 
-
-Sign Off 
-
- 
-
- 
-
- 
-
-Background 
-
-This section identifies background information necessary to understand this design.  
-
-Requirements 
-
-Give a summary in bullet points and link to a requirements document or DevOps ticket if needed  
-
-Requirement 1 
-
-Requirement 2 
-
-Use cases 
-
-How will this feature be used, list all potential use cases.  Include any additional information that might impact design decisions 
-
-User Interaction 
-
-Work with requesting team to turn the use cases into interaction diagrams.  What steps will the user take when leveraging this design.  This is an important step that will set the direction for development 
-
-Assumptions 
-
-What assumptions are being made that impact the design? 
-
-In-Scope 
-
-Document what is intended to be included in the design 
-
-Out-of-Scope 
-
-Document what is intended to be excluded from the design 
-
- 
-
- 
-
- 
-
-Design 
-
-The section covers the design and implementation of the Feature 
-
-High-Level Design 
-
-Lay out the overall approach and the possible design choices. What are the main design decisions? What are the pros and cons of each option?  A high level black box diagram should be included 
-
-Detailed Design 
-
-Describe your design in detail. Explain the pros and cons of your design. List open problems and caveats. Include one or more of these diagrams as appropriate: system architecture, API definition, data flow, control flow, sequence, interaction, etc. Clearly identify and motivate your design decisions. Do not include implementation details such as code.  A separate section may be created for each User Story.  If that is not practical, then the specific user stories in scope should be referenced. 
-
-Detailed Design – Database/API (if applicable) 
-
-Document any API updates or table changes if applicable.  If no changes are required but the scope of the feature includes data discoverability document data flow.  Be explicit.  Show any additional columns and make sure to trace data relationships to indicate how a user/system will interact with the data.   
-
-User Story 1 Design 
-
-If Applicable, add detailed design elements covered by this user story 
-
-User Story 2 Design 
-
-If Applicable, add detailed design elements covered by this user story 
-
-Dependencies and Risks 
-
-What other systems and libraries does this design depend on? How will their failures be handled? Are we depending on systems still under development and are we considering those risks? 
-
-Gaps 
-
-Open design elements that need addressed.  Plan to address should be documented 
-
- 
-
- 
-
-Testing 
-
-What is your strategy for testing your implementation? How will you prevent regressions? Do you need to validate using real world data? Please note that manual testing is not a valid strategy. 
-
-Unit Tests 
-
-Identify which unit tests needed to be implemented for a robust design 
-
-Integration Tests 
-
-Identify which test need to be run to verify correct interaction with the whole system 
-
- 
-
-Deployment  
-
-How will you roll out the feature? How will you know if something goes wrong? Which deployment process is used, What github actions are used? 
-
- 
-
-Work Estimate 
-
-Itemize and estimate the implementation work required (number of weeks). 
-
- 
-
-Evidence of Completion 
-
-For each test outlined in the testing section, show or link to evidence of completion 
-
- 
-
-Reference  
-
-Notes 
+PTAG remains active until metadata table proves stable. Final migration plan will be handled separately.
