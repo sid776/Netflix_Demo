@@ -1,0 +1,43 @@
+
+  taxonomy_v4 {
+    BIGINT tax_id PK
+    VARCHAR version
+    VARCHAR name
+    BIGINT parent_tax_id FK
+    TEXT description
+    TIMESTAMP created_at
+  }
+  log_meta {
+    BIGINT log_id PK
+    VARCHAR source_system
+    TEXT uri
+    TIMESTAMP captured_at
+    BIGINT size_bytes
+    CHAR checksum_sha256
+    BIGINT tax_id FK
+  }
+  attr_def {
+    VARCHAR attr_key PK
+    VARCHAR dtype
+    BOOLEAN required
+    TEXT allowed_values
+    TEXT description
+  }
+  log_attr {
+    BIGINT log_id FK
+    VARCHAR attr_key FK
+    TEXT attr_value
+  }
+  integrity_report {
+    BIGINT report_id PK
+    BIGINT log_id FK
+    VARCHAR status
+    TEXT details
+    TIMESTAMP created_at
+  }
+
+  taxonomy_v4 ||--o{ taxonomy_v4 : parent
+  taxonomy_v4 ||--o{ log_meta : categorizes
+  log_meta ||--o{ log_attr : has
+  attr_def ||--o{ log_attr : defines
+  log_meta ||--o{ integrity_report : assessed_by
