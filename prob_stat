@@ -1,0 +1,27 @@
+2.1 Problem Statement
+
+The current ECM log pipeline heavily relies on PTAG metadata, which has become overloaded and restrictive over time. Integrity reports and annotations exist in separate, unlinked structures, making it difficult to correlate logs with their validation outcomes or contextual metadata. As a result, the system struggles to support flexible, attribute-based searches or maintain a clear lineage of log data.
+
+This creates challenges in:
+
+Efficiently retrieving logs based on dynamic attributes.
+
+Tracking integrity and schema relationships across multiple systems.
+
+Maintaining compatibility with ongoing ECM data flows while evolving schema design.
+
+The Autonomy Log Database aims to address these issues by introducing a decoupled metadata schema that extends current PTAG functionality without disrupting existing dependencies.
+
+2.2 Objective
+
+The goal of this design is to create a parallel metadata system that supports attribute-based log discovery, traceability, and integrity validation.
+
+Key objectives include:
+
+Implementing a normalized schema (log_meta, log_attr, attr_def, taxonomy_v4) for flexible tagging and queryability.
+
+Building an Airflow-based ingestion pipeline to process raw log JSONs and populate metadata tables.
+
+Enabling API-level access to query logs and attributes using standardized filters.
+
+Ensuring non-intrusive coexistence with the existing PTAG system to enable gradual migration and backward compatibility.
