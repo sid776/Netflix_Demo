@@ -1,0 +1,36 @@
+You probably flipped a bunch of files just by opening the repo in WSL (line-endings/permissions). Let’s clean it safely.
+
+Quick fix (safe + reversible)
+# 0) Make a safety backup of everything you’ve changed
+git stash push -u -m "backup before cleanup"
+
+# 1) Fix common WSL noise so it doesn’t happen again
+git config core.filemode false
+git config core.autocrlf input
+
+# 2) Put your branch back to the last commit on it
+git reset --hard HEAD
+
+# 3) (optional) If git still shows untracked junk, preview then delete
+git clean -fdxn   # preview
+git clean -fdx    # delete untracked/ignored files
+
+
+Now git status should be clean.
+
+If you want your branch to exactly match the remote base branch
+
+Sometimes you want to discard everything and start from the latest develop (or whatever your base is):
+
+# make sure you have the latest remote refs
+git fetch origin
+
+# replace your current branch contents with the remote branch (e.g., develop)
+git reset --hard origin/develop
+
+# remove any leftover untracked files
+git clean -fdx
+
+
+⚠️ This discards local work. You already stashed a backup, so if you need anything back later:
+git stash list and git stash apply "stash@{0}" (or whichever index).
