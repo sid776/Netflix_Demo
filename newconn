@@ -1,0 +1,57 @@
+0) Make sure you’ll reconnect with the old client
+
+On your laptop, in Command Prompt:
+
+code --version
+
+
+It must print 1.74.3 and the commit 92d25e35d9bf1d36dd0d2ee59a3e2d79b9d02b1c.
+If it doesn’t, open the 1.74.3 install (portable zip works best), then:
+
+Settings → Update: Mode = none
+
+Extensions → Remote – SSH → “Install Another Version…” → pick a 0.95.x build
+
+Settings → Remote.SSH: Check Linux Prerequisites = off
+
+1) Download the server on your laptop
+
+PowerShell on your laptop:
+
+$uri = "https://update.code.visualstudio.com/1.74.3/server-linux-x64/stable"
+$out = "$env:TEMP\vscode-server-1.74.3.tar.gz"
+Invoke-WebRequest -Uri $uri -OutFile $out -UseBasicParsing
+
+
+(If that’s blocked, just paste the URL in your browser and save the file to your Downloads.)
+
+2) Copy it to Trex and unpack
+# Copy to home
+scp $out jenas7@10.224.82.10:~/vscode-server-1.74.3.tar.gz
+
+
+Then SSH to Trex and run:
+
+# Clean any half-installs
+rm -rf ~/.vscode-server
+
+# Use the commit that matches VS Code 1.74.3
+commit=92d25e35d9bf1d36dd0d2ee59a3e2d79b9d02b1c
+mkdir -p ~/.vscode-server/bin/$commit
+mv ~/vscode-server-1.74.3.tar.gz ~/.vscode-server/bin/$commit/
+cd ~/.vscode-server/bin/$commit
+
+tar --strip-components=1 -xzvf vscode-server-1.74.3.tar.gz
+rm vscode-server-1.74.3.tar.gz
+
+# Sanity check (should print usage lines, NOT errors)
+~/.vscode-server/bin/$commit/bin/code-server --help | head -n3
+
+3) Connect with the right VS Code
+
+In VS Code 1.74.3 (double-check Help → About), use:
+
+Ctrl+Shift+P → Remote-SSH: Connect to Host… → 10.224.82.10
+
+
+You should get the green >< SSH: 10.224.82.10 bar.
