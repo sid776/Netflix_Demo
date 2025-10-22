@@ -1,0 +1,310 @@
+1) models.py — add two new tables (paste near the bottom)
+# --- NEW: Parallel metadata, does NOT modify PTAG or RawData ---
+
+class LogMetadataHeader(Context().db_base, Base):
+    """
+    One row per ECM log file (parallel to PTAG). Links to RawData.id.
+    Keeps the original JSON for traceability (optional).
+    """
+    __tablename__ = "log_metadata_header"
+
+    id = Column(Integer, primary_key=True, autoincrement=True, index=True, nullable=False, unique=True)
+    # link to existing raw log
+    raw_data_id = Column(Integer, ForeignKey("raw_data.id"), index=True, nullable=False)
+    # stable external UID for convenience (ECM filename, GUID, etc.)
+    log_uid = Column(String(255), nullable=False, index=True)
+
+    created_at = Column(DateTime(timezone=True), default=utcnow, nullable=True)
+    updated_at = Column(DateTime(timezone=True), default=utcnow, nullable=True)
+
+    # keep original metadata blob (optional)
+    source_json = Column(JSON, nullable=True)
+
+    # relationship (no backref on RawData to avoid side-effects)
+    attrs = relationship("LogMetadataAttr", back_populates="header", lazy="dynamic", cascade="all,delete")
+
+    __table_args__ = (
+        UniqueConstraint("raw_data_id", name="_log_metadata_header_raw_data_uc"),
+    )
+
+    def __init__(self, **kwargs):
+        self.__dict__.update(kwargs)
+
+
+class LogMetadataAttr(Context().db_base, Base):
+    """
+    Key–value attributes for a log (flattened).
+    Enforces de-dup per header/key/value.
+    """
+    __tablename__ = "log_metadata_attr"
+
+    id = Column(Integer, primary_key=True, autoincrement=True, index=True, nullable=False, unique=True)
+    header_id = Column(Integer, ForeignKey("log_metadata_header.id", ondelete="CASCADE"), index=True, nullable=False)
+
+    attr_key = Column(String(255), index=True, nullable=False)
+    attr_value = Column(String(1024), index=True, nullable=False)
+
+    created_at = Column(DateTime(timezone=True), default=utcnow, nullable=True)
+    updated_at = Column(DateTime(timezone=True), default=utcnow, nullable=True)
+
+    header = relationship("LogMetadataHeader", back_populates="attrs")
+
+    __table_args__ = (
+        UniqueConstraint("header_id", "attr_key", "attr_value", name="_log_metadata_attr_uc"),
+    )
+
+    def __init__(self, **kwargs):
+        self.__dict__.update(kwargs)
+
+
+Uses your utcnow, Context().db_base, and Base.
+
+FK points to raw_data.id (fits your schema).
+
+No changes to any existing class or import.
+
+2) Alembic migration file (add under db_versions/versions/)
+
+Create a new revision (keep your standard CLI):
+
+alembic revision -m "add log_metadata_header & log_metadata_attr"
+
+
+Open the generated file and replace bodies with:
+
+from alembic import op
+import sqlalchemy as sa
+
+# revision identifiers, set by `alembic revision`
+revision = "<set_by_alembic>"
+down_revision = "<prev_rev>"
+branch_labels = None
+depends_on = None
+
+def upgrade():
+    op.create_table(
+        "log_metadata_header",
+        sa.Column("id", sa.Integer(), primary_key=True, autoincrement=True, nullable=False),
+        sa.Column("raw_data_id", sa.Integer(), sa.ForeignKey("raw_data.id"), nullable=False),
+        sa.Column("log_uid", sa.String(length=255), nullable=False),
+        sa.Column("created_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("updated_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("source_json", sa.JSON(), nullable=True),
+    )
+    op.create_index("ix_log_metadata_header_log_uid", "log_metadata_header", ["log_uid"])
+    op.create_index("ix_log_metadata_header_raw_data_id", "log_metadata_header", ["raw_data_id"])
+    op.create_unique_constraint("_log_metadata_header_raw_data_uc", "log_metadata_header", ["raw_data_id"])
+
+    op.create_table(
+        "log_metadata_attr",
+        sa.Column("id", sa.Integer(), primary_key=True, autoincrement=True, nullable=False),
+        sa.Column("header_id", sa.Integer(), sa.ForeignKey("log_metadata_header.id", ondelete="CASCADE"), nullable=False),
+        sa.Column("attr_key", sa.String(length=255), nullable=False),
+        sa.Column("attr_value", sa.String(length=1024), nullable=False),
+        sa.Column("created_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("updated_at", sa.DateTime(timezone=True), nullable=True),
+    )
+    op.create_index("ix_log_metadata_attr_key", "log_metadata_attr", ["attr_key"])
+    op.create_index("ix_log_metadata_attr_value", "log_metadata_attr", ["attr_value"])
+    op.create_unique_constraint(
+        "_log_metadata_attr_uc",
+        "log_metadata_attr",
+        ["header_id", "attr_key", "attr_value"],
+    )
+
+def downgrade():
+    op.drop_constraint("_log_metadata_attr_uc", "log_metadata_attr", type_="unique")
+    op.drop_index("ix_log_metadata_attr_value", table_name="log_metadata_attr")
+    op.drop_index("ix_log_metadata_attr_key", table_name="log_metadata_attr")
+    op.drop_table("log_metadata_attr")
+
+    op.drop_constraint("_log_metadata_header_raw_data_uc", "log_metadata_header", type_="unique")
+    op.drop_index("ix_log_metadata_header_raw_data_id", table_name="log_metadata_header")
+    op.drop_index("ix_log_metadata_header_log_uid", table_name="log_metadata_header")
+    op.drop_table("log_metadata_header")
+
+
+Then:
+
+alembic upgrade head
+
+3) Minimal repository helper (fits your patterns, no new deps)
+
+Create utilities/metadata_repo.py:
+
+from typing import Dict, Tuple
+from sqlalchemy.orm import Session
+from db.context import Context
+from db.models import LogMetadataHeader, LogMetadataAttr
+
+def upsert_header_with_attrs(
+    raw_data_id: int,
+    log_uid: str,
+    attrs: Dict[str, str],
+    source_json: dict | None = None,
+    session: Session | None = None,
+) -> Tuple[LogMetadataHeader, int]:
+    """
+    Creates/updates a header for a given raw_data_id and inserts missing key/value pairs.
+    Returns (header, number_of_new_attr_rows).
+    """
+    session = session or Context().get_session()
+
+    header = (
+        session.query(LogMetadataHeader)
+        .filter(LogMetadataHeader.raw_data_id == raw_data_id)
+        .one_or_none()
+    )
+
+    if header is None:
+        header = LogMetadataHeader(raw_data_id=raw_data_id, log_uid=log_uid, source_json=source_json)
+        session.add(header)
+        session.flush()  # get header.id
+
+    # de-dup existing (header_id, key, value)
+    existing = {
+        (a.attr_key, a.attr_value)
+        for a in session.query(LogMetadataAttr).filter(LogMetadataAttr.header_id == header.id)
+    }
+
+    added = 0
+    for k, v in (attrs or {}).items():
+        if (k, v) in existing:
+            continue
+        session.add(LogMetadataAttr(header_id=header.id, attr_key=k, attr_value=v))
+        added += 1
+
+    return header, added
+
+
+Uses your Context().get_session().
+
+No changes to db.py are required.
+
+Safe to call from Airflow, API, or scripts.
+
+4) Tiny Airflow DAG (PoC ingest of JSON → DB)
+
+Place in your existing pipeline area (I saw pipeline/ and scripts/ in screenshots). Example: pipeline/dags/ingest_log_metadata_dag.py.
+
+from datetime import datetime
+import json, os
+from airflow import DAG
+from airflow.operators.python import PythonOperator
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+from utilities.metadata_repo import upsert_header_with_attrs
+
+DB_URI = os.environ["SQLALCHEMY_DATABASE_URI"]                 # already used by your stack
+INBOX = os.environ.get("METADATA_DROP_DIR", "/opt/airflow/metadata_inbox")
+
+engine = create_engine(DB_URI, pool_pre_ping=True)
+SessionLocal = sessionmaker(bind=engine)
+
+def _ingest_path(json_path: str):
+    with open(json_path, "r") as f:
+        payload = json.load(f)
+    raw_data_id = int(payload["raw_data_id"])
+    log_uid = payload["log_uid"]
+    attrs = payload.get("attributes", {})
+
+    db = SessionLocal()
+    try:
+        upsert_header_with_attrs(raw_data_id=raw_data_id, log_uid=log_uid, attrs=attrs, source_json=payload, session=db)
+        db.commit()
+    except:
+        db.rollback()
+        raise
+    finally:
+        db.close()
+
+def _scan_and_ingest():
+    if not os.path.isdir(INBOX):
+        return
+    for name in os.listdir(INBOX):
+        if name.endswith(".json"):
+            _ingest_path(os.path.join(INBOX, name))
+
+with DAG(
+    dag_id="ingest_log_metadata",
+    start_date=datetime(2025,1,1),
+    schedule_interval=None,      # manual/event-driven for PoC
+    catchup=False,
+    tags=["metadata","logs"],
+) as dag:
+    scan = PythonOperator(task_id="scan_and_ingest_json", python_callable=_scan_and_ingest)
+
+5) Simple API route (FastAPI) to query logs by attribute
+
+Create apis/v1/log_metadata.py and register it where your v1 API routers are included:
+
+from fastapi import APIRouter, Query, Depends
+from typing import List, Dict
+from sqlalchemy.orm import Session
+from db.context import Context
+from db.models import LogMetadataHeader, LogMetadataAttr
+
+router = APIRouter(prefix="/logs/metadata", tags=["metadata"])
+
+def get_db():
+    return Context().get_session()
+
+@router.get("")
+def search_metadata(
+    key: str = Query(...),
+    value: str = Query(...),
+    limit: int = Query(100, ge=1, le=1000),
+    db: Session = Depends(get_db),
+) -> Dict[str, List[Dict]]:
+    q = (
+        db.query(LogMetadataHeader.log_uid, LogMetadataHeader.raw_data_id)
+          .join(LogMetadataAttr, LogMetadataAttr.header_id == LogMetadataHeader.id)
+          .filter(LogMetadataAttr.attr_key == key, LogMetadataAttr.attr_value == value)
+          .limit(limit)
+    )
+    rows = [{"log_uid": r[0], "raw_data_id": r[1]} for r in q.all()]
+    return {"count": len(rows), "results": rows}
+
+
+Then include:
+
+# apis/v1/__init__.py (or your app factory)
+from fastapi import APIRouter
+from . import log_metadata
+
+api = APIRouter()
+api.include_router(log_metadata.router)
+
+How to land this safely today
+# 1) Add models + repo + API + DAG + migration
+git add db/models.py utilities/metadata_repo.py apis/v1/log_metadata.py pipeline/dags/ingest_log_metadata_dag.py db_versions/versions/<new_rev>.py
+
+# 2) Commit
+git commit -m "Feature 1241594: parallel metadata tables + ingest DAG + attribute query API (PoC)”
+
+# 3) Migrate locally (dev)
+alembic upgrade head
+
+# 4) Push your branch
+git push -u origin autonomy_logs_1241594_jenas7
+
+
+Open a Draft PR and add this checklist:
+
+ New tables created by Alembic in dev (log_metadata_header, log_metadata_attr)
+
+ JSON → DB ingest DAG deployed (dev) and run on sample
+
+ /api/v1/logs/metadata?key=...&value=... returns results
+
+ No PTAG changes; fully parallel design
+
+Why this fits your codebase
+
+Keeps all current imports/libs and patterns (Context/Base mixins, MySQL friendliness).
+
+No change to service layer contracts; a helper in utilities/ is enough for now.
+
+Adds only new DB objects and a small query endpoint—exactly your design doc.
+
+If any of your actual column names differ (e.g., you prefer raw_log_id instead of raw_data_id), tell me which name to align to and I’ll patch the snippets accordingly.
