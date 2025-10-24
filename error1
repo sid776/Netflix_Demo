@@ -1,0 +1,30 @@
+(venv) jenas7@trex:~/plat_aiesdp_elt_pipeline/plat_aiesdp_elt_pipeline$ python -m alembic upgrade head
+Traceback (most recent call last):
+  File "/usr/lib/python3.6/runpy.py", line 193, in _run_module_as_main
+    "__main__", mod_spec)
+  File "/usr/lib/python3.6/runpy.py", line 85, in _run_code
+    exec(code, run_globals)
+  File "/home/jenas7/plat_aiesdp_elt_pipeline/plat_aiesdp_elt_pipeline/venv/lib/python3.6/site-packages/alembic/__main__.py", line 4, in <module>
+    main(prog="alembic")
+  File "/home/jenas7/plat_aiesdp_elt_pipeline/plat_aiesdp_elt_pipeline/venv/lib/python3.6/site-packages/alembic/config.py", line 559, in main
+    CommandLine(prog=prog).main(argv=argv)
+  File "/home/jenas7/plat_aiesdp_elt_pipeline/plat_aiesdp_elt_pipeline/venv/lib/python3.6/site-packages/alembic/config.py", line 553, in main
+    self.run_cmd(cfg, options)
+  File "/home/jenas7/plat_aiesdp_elt_pipeline/plat_aiesdp_elt_pipeline/venv/lib/python3.6/site-packages/alembic/config.py", line 533, in run_cmd
+    **dict((k, getattr(options, k, None)) for k in kwarg)
+  File "/home/jenas7/plat_aiesdp_elt_pipeline/plat_aiesdp_elt_pipeline/venv/lib/python3.6/site-packages/alembic/command.py", line 294, in upgrade
+    script.run_env()
+  File "/home/jenas7/plat_aiesdp_elt_pipeline/plat_aiesdp_elt_pipeline/venv/lib/python3.6/site-packages/alembic/script/base.py", line 490, in run_env
+    util.load_python_file(self.dir, "env.py")
+  File "/home/jenas7/plat_aiesdp_elt_pipeline/plat_aiesdp_elt_pipeline/venv/lib/python3.6/site-packages/alembic/util/pyfiles.py", line 97, in load_python_file
+    module = load_module_py(module_id, path)
+  File "/home/jenas7/plat_aiesdp_elt_pipeline/plat_aiesdp_elt_pipeline/venv/lib/python3.6/site-packages/alembic/util/compat.py", line 182, in load_module_py
+    spec.loader.exec_module(module)
+  File "<frozen importlib._bootstrap_external>", line 678, in exec_module
+  File "<frozen importlib._bootstrap>", line 219, in _call_with_frames_removed
+  File "db_versions/env.py", line 7, in <module>
+    import db.models
+  File "./db/models.py", line 8
+    from __future__ import annotations
+    ^
+SyntaxError: future feature annotations is not defined
