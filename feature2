@@ -1,0 +1,290 @@
+A focused service layer for the new tables (CRUD + search).
+
+A minimal API endpoint to query attributes (GET /v1/logs/metadata).
+
+A tiny ingest helper you can call from Airflow later (or run once by hand).
+
+A lightweight unit test to prove inserts + search work.
+
+None of this requires upgrading Python or running Alembic right now; it compiles, is inert until called, and matches your project patterns (Context, SQLAlchemy Session, utcnow, etc.). You can commit these files immediately.
+
+1) Service layer
+
+Create: db/services/log_metadata_service.py
+
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+###############################################################################
+# Copyright (C) Caterpillar Inc. All Rights Reserved.
+# Caterpillar: Confidential Yellow
+###############################################################################
+
+from __future__ import annotations
+from typing import Dict, Iterable, List, Optional, Tuple
+
+from sqlalchemy import and_, select
+from sqlalchemy.orm import Session
+
+from db.context import Context
+from db.models import LogMetadataAttr, LogMetadataHeader
+
+
+class LogMetadataService:
+    """CRUD + query helpers for the parallel log metadata tables."""
+
+    # --- basic fetches -------------------------------------------------------
+    def get_header_by_raw_data_id(self, session: Session, raw_data_id: int) -> Optional[LogMetadataHeader]:
+        return session.execute(
+            select(LogMetadataHeader).where(LogMetadataHeader.raw_data_id == raw_data_id)
+        ).scalars().first()
+
+    def get_header_by_uid(self, session: Session, log_uid: str) -> Optional[LogMetadataHeader]:
+        return session.execute(
+            select(LogMetadataHeader).where(LogMetadataHeader.log_uid == log_uid)
+        ).scalars().first()
+
+    # --- create / upsert -----------------------------------------------------
+    def ensure_header(
+        self,
+        session: Session,
+        *,
+        raw_data_id: int,
+        log_uid: str,
+        source_json: Optional[dict] = None,
+    ) -> LogMetadataHeader:
+        hdr = self.get_header_by_raw_data_id(session, raw_data_id)
+        if hdr:
+            # keep existing; optionally refresh json
+            if source_json:
+                hdr.source_json = source_json
+            return hdr
+
+        hdr = LogMetadataHeader(raw_data_id=raw_data_id, log_uid=log_uid, source_json=source_json)
+        session.add(hdr)
+        session.flush()  # get hdr.id
+        return hdr
+
+    def upsert_attr(
+        self, session: Session, *, header_id: int, key: str, value: str
+    ) -> LogMetadataAttr:
+        row = session.execute(
+            select(LogMetadataAttr).where(
+                and_(
+                    LogMetadataAttr.header_id == header_id,
+                    LogMetadataAttr.attr_key == key,
+                    LogMetadataAttr.attr_value == value,
+                )
+            )
+        ).scalars().first()
+        if row:
+            return row
+        row = LogMetadataAttr(header_id=header_id, attr_key=key, attr_value=value)
+        session.add(row)
+        return row
+
+    def bulk_upsert_attrs(
+        self, session: Session, *, header_id: int, kv: Dict[str, str]
+    ) -> int:
+        count = 0
+        for k, v in kv.items():
+            self.upsert_attr(session, header_id=header_id, key=str(k), value=str(v))
+            count += 1
+        return count
+
+    # --- query by key/value --------------------------------------------------
+    def search_by_kv(
+        self, session: Session, *, key: str, value: str, limit: int = 100
+    ) -> List[Tuple[str, int]]:
+        """
+        Returns list of (log_uid, raw_data_id) that have attr key=value.
+        """
+        q = (
+            session.query(LogMetadataHeader.log_uid, LogMetadataHeader.raw_data_id)
+            .join(LogMetadataAttr, LogMetadataAttr.header_id == LogMetadataHeader.id)
+            .filter(LogMetadataAttr.attr_key == key, LogMetadataAttr.attr_value == value)
+            .limit(limit)
+        )
+        return [(r[0], r[1]) for r in q.all()]
+
+
+# convenience factory (mirrors other services style if you use DI later)
+def get_log_metadata_service() -> LogMetadataService:
+    return LogMetadataService()
+
+2) API route
+
+Create: apis/v1/log_metadata.py (keeps to your FastAPI style and get_db dependency).
+
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+###############################################################################
+# Copyright (C) Caterpillar Inc. All Rights Reserved.
+# Caterpillar: Confidential Yellow
+###############################################################################
+
+from __future__ import annotations
+from typing import Dict, List
+
+from fastapi import APIRouter, Depends, Query
+from sqlalchemy.orm import Session
+
+from apis.v1.dependencies import get_db  # if your project keeps this here
+from db.services.log_metadata_service import get_log_metadata_service, LogMetadataService
+
+router = APIRouter(prefix="/v1/logs", tags=["logs-metadata"])
+
+
+@router.get("/metadata", summary="Query logs by metadata key/value")
+def query_log_metadata(
+    key: str = Query(..., description="Attribute key"),
+    value: str = Query(..., description="Attribute value"),
+    limit: int = Query(100, ge=1, le=1000),
+    db: Session = Depends(get_db),
+    svc: LogMetadataService = Depends(get_log_metadata_service),
+) -> Dict[str, object]:
+    """
+    Returns logs where the flattened attribute table contains (key == value).
+    Response rows are (log_uid, raw_data_id).
+    """
+    rows = svc.search_by_kv(db, key=key, value=value, limit=limit)
+    return {"count": len(rows), "results": [{"log_uid": r[0], "raw_data_id": r[1]} for r in rows]}
+
+
+Wire this file into your app like the other routers (e.g., in apis/v1/__init__.py or wherever you include routers):
+
+from .log_metadata import router as log_metadata_router
+app.include_router(log_metadata_router)
+
+3) Tiny ingest helper (callable now or from DAG later)
+
+Create: utilities/metadata_repo.py (name matches your existing utilities pattern).
+
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+###############################################################################
+# Copyright (C) Caterpillar Inc. All Rights Reserved.
+# Caterpillar: Confidential Yellow
+###############################################################################
+
+from __future__ import annotations
+from typing import Dict, Optional
+
+from sqlalchemy.orm import Session
+
+from db.context import Context
+from db.services.log_metadata_service import LogMetadataService
+
+
+def ingest_single_log_metadata(
+    *,
+    session: Session,
+    svc: LogMetadataService,
+    raw_data_id: int,
+    log_uid: str,
+    attrs: Dict[str, str],
+    source_json: Optional[dict] = None,
+) -> int:
+    """
+    Idempotent ingest for one log: ensures header, upserts key/values.
+    Returns number of attributes processed.
+    """
+    hdr = svc.ensure_header(session, raw_data_id=raw_data_id, log_uid=log_uid, source_json=source_json)
+    count = svc.bulk_upsert_attrs(session, header_id=hdr.id, kv=attrs)
+    return count
+
+
+Optional “runner” you can use manually now (doesn’t require Airflow):
+
+Create: scripts/run_log_metadata_ingest.py
+
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+
+from sqlalchemy.orm import Session
+from db.context import Context
+from db.services.log_metadata_service import LogMetadataService
+from utilities.metadata_repo import ingest_single_log_metadata
+
+# Example data (replace with a real raw_data_id and your attributes)
+RAW_DATA_ID = 12345
+LOG_UID = "ECM_ABC_20241022_001"
+ATTRS = {"weather": "rain", "site": "Peoria", "speed_threshold": "5"}
+
+def main():
+    ctx = Context()
+    session: Session = ctx.get_session()
+    svc = LogMetadataService()
+    try:
+        n = ingest_single_log_metadata(
+            session=session,
+            svc=svc,
+            raw_data_id=RAW_DATA_ID,
+            log_uid=LOG_UID,
+            attrs=ATTRS,
+            source_json={"sample": True},
+        )
+        session.commit()
+        print(f"Ingested/updated {n} attributes for raw_data_id={RAW_DATA_ID}")
+    except Exception as e:
+        session.rollback()
+        raise
+    finally:
+        session.close()
+
+if __name__ == "__main__":
+    main()
+
+4) Minimal unit test (shows insert + search works)
+
+Create: test/_apis/v1/test_log_metadata.py
+
+from sqlalchemy.orm import Session
+
+from db.context import Context
+from db.models import LogMetadataHeader, LogMetadataAttr
+from db.services.log_metadata_service import LogMetadataService
+
+def test_service_roundtrip_smoke():
+    # This assumes a test DB and a raw_data row with id=1 exists.
+    # If not, mark/skip as needed or insert a dummy raw_data in your test fixture.
+    session: Session = Context().get_session()
+    svc = LogMetadataService()
+
+    hdr = svc.ensure_header(session, raw_data_id=1, log_uid="TEST_UID", source_json={"x": 1})
+    svc.upsert_attr(session, header_id=hdr.id, key="weather", value="rain")
+    svc.upsert_attr(session, header_id=hdr.id, key="site", value="ATL")
+
+    session.commit()
+
+    rows = svc.search_by_kv(session, key="weather", value="rain", limit=10)
+    assert any(uid == "TEST_UID" for uid, _ in rows)
+
+
+If your test DB doesn’t have raw_data.id=1, adapt the fixture or skip with pytest.skip.
+
+What to commit
+
+db/services/log_metadata_service.py
+
+apis/v1/log_metadata.py
+
+utilities/metadata_repo.py
+
+scripts/run_log_metadata_ingest.py (optional but nice to show usage)
+
+test/_apis/v1/test_log_metadata.py
+
+These are small, readable, and demonstrate:
+
+a real API surface for querying the new metadata,
+
+a service layer your teammates can extend,
+
+an ingest entry point,
+
+a test showing the round-trip.
+
+Quick commit & push (from your feature branch)
+git add db/services/log_metadata_service.py apis/v1/log_metadata.py utilities/metadata_repo.py scripts/run_log_metadata_ingest.py test/_apis/v1/test_log_metadata.py
+git commit -m "feat(log-metadata): service + API + ingest helper + smoke test"
+git push -u origin <your-branch>
