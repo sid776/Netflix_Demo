@@ -1,0 +1,81 @@
+You’re running Alembic with Python 3.6 (see the traceback: .../venv/lib/python3.6/...) and your code imports:
+
+from __future__ import annotations
+
+
+That future feature is not available in 3.6, so Python throws:
+
+SyntaxError: future feature annotations is not defined
+
+
+You have two ways to fix it. The right one here is to use a newer Python (3.10+). Don’t edit enterprise files to remove that import.
+
+Fix: recreate your venv with Python ≥ 3.10
+1) Install a modern Python in WSL (pick one of these)
+
+Option A — if Ubuntu offers 3.12 (recommended):
+
+sudo apt update
+sudo apt install -y python3.12 python3.12-venv python3.12-dev
+
+
+Option B — if you need the deadsnakes PPA (for 3.10/3.11):
+
+sudo apt update
+sudo apt install -y software-properties-common
+sudo add-apt-repository -y ppa:deadsnakes/ppa
+sudo apt update
+sudo apt install -y python3.10 python3.10-venv python3.10-dev
+
+2) Remove the old venv and create a new one
+
+From your repo root:
+
+deactivate 2>/dev/null || true
+rm -rf .venv
+
+# choose the version you installed (3.12 shown here)
+python3.12 -m venv .venv
+source .venv/bin/activate
+
+python --version   # should show 3.10+ (e.g., 3.12.x)
+pip install --upgrade pip setuptools wheel
+
+3) Install deps
+pip install -r requirements.txt
+
+
+If you’re using MySQL and it’s not in requirements, also:
+
+pip install pymysql
+
+4) Set your DB URL and run Alembic
+export SQLALCHEMY_DATABASE_URI='mysql+pymysql://USER:PASSWORD@HOST:3306/DBNAME'
+echo $SQLALCHEMY_DATABASE_URI  # quick sanity check
+
+python -m alembic upgrade head
+
+
+You should now see Alembic applying your migration (creating log_metadata_header and log_metadata_attr).
+
+If you absolutely cannot upgrade Python (temporary workaround)
+
+I don’t recommend this for the enterprise repo, but for completeness:
+
+Remove/comment from __future__ import annotations everywhere Alembic imports (e.g., db/models.py, maybe others), or
+
+Run migrations from a separate helper script that imports models lazily without that future import.
+
+Again, better to upgrade Python.
+
+Quick verification checklist
+
+python --version prints 3.10+
+
+pip show alembic shows installed
+
+echo $SQLALCHEMY_DATABASE_URI prints a non-empty URL
+
+python -m alembic upgrade head runs without SyntaxError and reports the migration ID you just added
+
+If anything still blocks, paste the new traceback and I’ll pinpoint the next fix.
