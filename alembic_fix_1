@@ -1,0 +1,66 @@
+Yep—on the Trex devbox you usually can’t upgrade the system Python. That’s why Alembic is importing your db/models.py (which uses from __future__ import annotations) under Python 3.6, and it blows up.
+
+Good news: you don’t need to upgrade Python to run your migration. Your migration script is explicit (it calls op.create_table(...)) and does not require importing the ORM models. So we can run Alembic without importing db.models.
+
+Quick fix (no Python upgrade)
+1) Make Alembic stop importing the models
+
+Edit db_versions/env.py (the Alembic “environment” file). At the top you currently have:
+
+from alembic import context
+import db.models            # <-- this causes the crash on py3.6
+from db.context import Context
+import os
+
+
+Change it to make the model import optional (or simply remove it):
+
+from alembic import context
+from db.context import Context
+import os
+
+# Optional: only import models if explicitly requested (for autogenerate).
+if os.getenv("ALEMBIC_IMPORT_MODELS", "0") == "1":
+    import db.models  # noqa
+
+
+Also make sure target_metadata is set without needing the import:
+
+target_metadata = Context().db_base.metadata
+
+
+(From your screenshots, you already set the DB URL via SQLALCHEMY_DATABASE_URI and use it in env.py—that’s perfect.)
+
+2) Export your DB URL in the shell
+export SQLALCHEMY_DATABASE_URI='mysql+pymysql://USER:PASSWORD@HOST:3306/DBNAME'
+
+
+(Use the real creds/host/db.)
+
+3) Activate your venv and run the migration
+source .venv/bin/activate
+python -m alembic upgrade head
+
+
+Because db.models is no longer imported, Python 3.6 won’t see from __future__ import annotations, and Alembic will apply your migration normally (creating log_metadata_header and log_metadata_attr).
+
+Why this is safe
+
+Your migration file already contains the DDL (op.create_table(...)), so Alembic doesn’t need ORM metadata or autogenerate.
+
+We’ve left the option to import models when you’re on a newer Python (set ALEMBIC_IMPORT_MODELS=1 to get autogenerate behavior in the future).
+
+We didn’t alter any enterprise libraries; just a small tweak in Alembic’s env file to avoid importing models on py3.6.
+
+Alternative (if you prefer flags instead of env var)
+
+If you’d rather drive this with an Alembic “x” arg, replace the optional import with:
+
+opts = context.get_x_argument(as_dictionary=True)
+if opts.get("import_models") == "1":
+    import db.models  # noqa
+
+
+Then run:
+
+python -m alembic upgrade head -x import_models=0
