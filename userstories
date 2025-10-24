@@ -1,0 +1,284 @@
+
+Overview:
+Pull:  #848624
+Priority:  2
+Milestone:  #1078020
+LoE (FTEH): 240
+Problem Statement:
+
+1AHS Team Needs
+PoC
+Need mechanism to query logs from Autonomy ECM, based on attributes. 
+Schema for attribute definition, to tag data logs, not defined for 1A Acceleration program
+
+Scope:
+Update Taxonomy
+Create New Tables for metadata
+Create API endpoints for new tables
+Create Airflow DAGs to ingest data/populate tables
+Out of scope:
+Log processors to generate data
+Migrate existing data to new table (should be features for following
+
+Requirements:
+[Req]
+DoD:
+Design Documented
+Implementation
+Lock down Taxonomy v4 design - 48 (Peter)
+understand current entity relationship diagram
+what information are in ptags
+how are they linked to raw logs
+how are integrity reports linked to raw logs
+how are additional tags added to logs?
+Understand proposed schema
+https://github.com/cat-autonomy/app_1ahs_arch_notes/pull/89
+Create new taxonomy table (keep old) - 8 (use copilot with visio)
+Create new meta data table - 8  (equivalent of ptag)
+Create new API endpoints - 8
+Create crawler DAG  - 48
+Total: 120x2 = 240 - 5 sprints
+Implementation Verified
+"How to use" documented
+Dep:
+[Deps]
+Risk
+R: [Risk]
+M: [Mitigation]
+RE:
+[Reusable Element]
+Metrics:
+[Metrics]
+
+
+Evidence of Completion (To be filled out by developer prior to closure):
+Design Doc: [Link]
+Evidence V&V: [Link]
+SW Location: [Link]
+How to Use: [Link]
+##############################################################################
+design doc:
+<DevopsID> – Feature 1241594 [2025Q4 AIESDP][1AHS] Autonomy Log Database  
+-Revision History-
+Rev. 	Date 	Authors 	Description 
+1.0 	2025-10-25 	 Siddharth Jena(jenas7)	 Initial Draft
+
+-Approvals-
+Rev. 	Date 	Approver 	Role 	Status 
+1.0 		 		Approved  
+/ Not Approved 
+ 
+ 
+Contents 
+Revision History…………………………………………………………………………………………………………...1
+Approvals…………………………………………………………………………………………………………………….1
+1 Scope of the Document……………………………………………………………………………………………… 2
+2 Overview……………………………………………………………………………………………………………………3
+      2.1 Problem Statement………………………………………………………………………………………………3
+      2.2 Objective…………………………………………………………………………………………………………….3
+      2.3 Timeline………………………………………………………………………………………………………………3
+      2.4 Background………………………………………………………………………………………………………….3
+      2.5 Requirements……………………………………………………………………………………………………….3
+      2.6 Use Cases……………………………………………………………………………………………………………3
+      2.7 User Interaction…………………………………………………………………………………………………….3
+     2.8 Assumptions…………………………………………………………………………………………………………4
+     2.9 In-scope……………………………………………………………………………………………………………….4
+     2.10 Out-of-Scope………………………………………………………………………………………………………4
+3 Design……………………………………………………………………………………………………………………….4
+      3.1 High-Level Design…………………………………………………………………………………………………4
+      3.2 Detailed  Design……………………………………………………………………………………………………4
+      3.3 Detailed Design Database/API………………………………………………………………………………..5
+      3.4 User Story 1 Design……………………………………………………………………………………………….5
+      3.5 User Story 2 Design ..…………………………………………………………………………………………….5
+      3.6 User Story 3 Design……………………………………………………………………………………………….6
+      3.7 User Story 4 Design ..…………………………………………………………………………………………….6
+      3.8 Dependancies and Risks………………………………………………………………………………………..6
+      3.9 Gaps……………..…………………………………………………………………………………………………….6
+4 Testing……………………………………………………………………………………………………………………….7
+      4.1 Unit Tests…………………………………………………………………………………………………………….7
+      4.2 Integration Tests……………………………………………………………………………………………………7
+5 Deployment.……………………………………………………………………………………………………………….7
+6 Work Estimate…………………………………………………………………………………………………………….7
+7 Evidence of Completion.………………………………………………………………………………………………………………….7
+8 Reference…………………………………………………………………………………………………………………..8
+9 Notes…………………………………………………………………………………………………………………………8
+ 
+1. Scope 
+The current ECM pipeline uses PTAG to assign metadata at the time of upload. Once the data is loaded, there is no clean way to append or modify attributes without directly changing core PTAG tables. Teams performing analysis often identify conditions post-ingest (e.g., weather, logging conditions, field anomalies), which cannot be captured today without schema intervention. This PoC aims to introduce a parallel metadata table that stores flexible key-value attributes linked to raw_data.log_id. This allows gradual transition while PTAG remains untouched.
+2.	Overview 
+2.1	Problem Statement
+
+The current ECM log pipeline heavily relies on PTAG metadata, which has become overloaded and restrictive over time. Integrity reports and annotations exist in separate, unlinked structures, making it difficult to correlate logs with their validation outcomes or contextual metadata. As a result, the system struggles to support flexible, attribute-based searches or maintain a clear lineage of log data.
+
+This creates challenges in:
+•	Efficiently retrieving logs based on dynamic attributes.
+
+•	Tracking integrity and schema relationships across multiple systems.
+
+•	Maintaining compatibility with ongoing ECM data flows while evolving schema design.
+
+The Autonomy Log Database aims to address these issues by introducing a decoupled metadata schema that extends current PTAG functionality without disrupting existing dependencies.
+2.2	Objective 
+The goal of this design is to create a parallel metadata system that supports attribute-based log discovery, traceability, and integrity validation.
+
+Key objectives include:
+•	Implementing a normalized schema (log_meta, log_attr, attr_def, taxonomy_v4) for flexible tagging and queryability.
+
+•	Building an Airflow-based ingestion pipeline to process raw log JSONs and populate metadata tables.
+
+•	Enabling API-level access to query logs and attributes using standardized filters.
+
+•	Ensuring non-intrusive coexistence with the existing PTAG system to enable gradual migration and backward compatibility.
+       2.3. Timeline
+Activity 	Days 	Estimated Completion Date 
+Design Doc 	 5	 2025/10/17
+Implementation [Schema and Table Creation] 	 7	 2025/10/24
+Implementation [Airflow DAGs and Data Ingestion] 	 7	 2025/10/31
+Customer PoC(Functional Valdation with sample data)	 14	 2025/11/14
+Implementation [API Endpint development] 	 7	 2025/11/21
+Verification(End-to-end Data Integrity and WorkflowTesting)	 7	 2025/11/28
+Documentation (User Guide, Api specs, Architecture Notes)	 5	 2025/12/04
+Sign Off 	 2	 2025/12/08
+		
+2.4	 Background 
+Current ECM pipeline stores logs with PTAG metadata. Integrity reports and annotations live in separate tables. Metadata tagging is limited, and PTAG is overloaded. The new attribute schema should sit parallel to PTAG without breaking existing queries.
+
+2.5	Requirements
+•  Metadata tagging must not interfere with PTAG.
+•  JSON-based ingestion through Airflow DAG.
+•  API filter support for attribute-based queries.
+
+
+2.6	Use Cases
+•   Apply ‘snowy condition’ attribute to a log after ingest.
+•   Query logs by attributes like weather, condition, speed thresholds.
+
+2.7	User Interaction 
+•	User uploads log data + attribute JSON.
+•	Airflow detects file, ingests metadata into table.
+•	API allows GET /logs/search?attribute=....
+
+2.8	Assumptions 
+•	ECM raw log table remains unchanged.
+•	PTAG stays active temporarily; new metadata table runs parallel.
+
+2.9	In-Scope
+
+• New metadata table creation.
+• DAG-based ingestion for attribute JSON.
+• API extension for attribute query.
+
+2.10	Out-of-Scope
+           •	Replacing PTAG immediately.
+           •	UI integration changes.
+3.	Design
+
+3.1 High-Level Design
+The metadata table holds a single row per log. A related attribute table holds attribute key-value pairs. Airflow picks up metadata from JSON manifest and inserts or updates records. The API layer fetches log_ids by attribute filters and returns matching entries.
+ 
+
+3.2 Detailed Design
+ 
+Table: log_metadata (id, log_id, created_at, updated_at). Table: log_attr (id, log_id, attribute_key, attribute_value). Migration will be handled via Alembic or direct SQL depending on environment. 
+
+3.3 API Design 
+Tables to be added:
+
+log_metadata_header – one row per log file.
+
+log_metadata_attr – key-value attributes for each log.
+
+API:
+GET /log-metadata/search?key=&value=
+
+3.4	User Story 1 Design 
+User Story 1 – Schema & Table Creation
+Scope:
+Create new metadata tables (log_metadata_header, log_metadata_attr) aligned with PTAG linking pattern, but independent.
+Design Notes:
+•	Header table contains one row per ECM log.
+•	Attributes table stores key-value pairs flattened (one row per attribute per log).
+•	Linked via raw_log_id.
+•	Schema migration created via Alembic.
+•	No PTAG rewrite in this phase – tables run in parallel.
+
+3.5	User Story 2 Design 
+User Story 2 – DAG for Metadata Ingest
+Scope:
+Airflow DAG detects JSON metadata drop next to ECM log and ingests attributes.
+
+Design Notes:
+•	DAG triggers on file drop (*.json) matching ECM file name.
+•	Validates JSON keys against a definition list.
+•	Inserts into log_metadata_header, then log_metadata_attr.
+•	On re-upload, DAG should upsert (not duplicate).
+3.6	 User Story 3 Design 
+User Story 3 – API Endpoint
+Scope:
+•	Expose /log-metadata/search?key=&value= as FastAPI route.
+
+Design Notes:
+•	Simple filter-based query on attributes table.
+•	Returns metadata + linked PTAG/log reference.
+•	Designed to be extended later with AND/OR filtering and pagination.
+
+3.7	  User Story 4 Design 
+User Story 4 – Validation & Backward Compatibility
+Scope:
+•	Ensure new metadata flow does not break existing PTAG API or dashboards.
+Design Notes:
+•	PTAG remains active.
+•	Feature flag used to separate old vs new metadata tables.
+•	Both tables visible under unified API namespace for migration testing.
+
+3.8	Dependencies and Risks 
+•	Requires Airflow instance connectivity to database.
+•	Requires agreement on metadata JSON schema.
+•	Risk: Metadata JSON mismatch → ingestion failure.
+
+3.9	Gaps 
+•	Decision pending: whether to enforce foreign keys or keep linkage loose.
+•	Naming convention to align with PTAG not finalized.
+•	Coordination with ECM pipeline for JSON location. 
+ 
+4.	Testing 
+•	Validate ingestion with sample JSON file.
+•	Confirm metadata table rows reflect inserted attributes.
+•	Test API response using attribute filter inputs.
+
+
+4.1	Unit Tests 
+•	Validate schema creation migration.
+•	Validate JSON parse → DB rows.
+
+4.2	Integration Tests 
+•	Full ingest of sample log + JSON → Query via API → Expect metadata.
+ 
+5.	Deployment  
+•	Code merged via feature branch → deployment via standard Airflow+API CICD.
+•	Migration scripts rolled out first, followed by DAG deployment and API update rollout. Rollback is limited to dropping or disabling metadata tables and pausing DAG.
+
+ 
+6.	Work Estimate 
+•	Based on effort breakdown, the work aligns with ~240 engineering hours. This includes schema work, DAG integration, API development, testing, and documentation closure.
+•	Total engineering effort estimated at 5 sprints, aligned with feature tracking entry. 
+
+
+7.	Evidence of Completion 
+•	Link to design doc: 
+•	Link to DAG run logs: [To be added]
+•	Link to migration PR: [To be added] 
+
+8.	Reference  
+•	ADO Feature 1241594
+•	PTAG ERD source repo (internal)
+•	Airflow ingestion pipeline spec (existing PTAG ingest code)
+9.	Notes 
+•	PTAG coexists with the new metadata structure initially. Future iterations may evaluate merging or deprecating PTAG once metadata layer proves stable.
+•	PTAG remains active until metadata table proves stable. Final migration plan will be handled separately.
+
+
+
+
+
+
