@@ -1,0 +1,105 @@
+What that .bak script is (and why it won’t help here)
+
+It imports db.models and calls ctx.create_tables() off Context().
+
+It was used to backfill from CSVs (old_db_csv/...) into the legacy schema (PTAG, Modality, RawData, ExtractedData).
+
+Because it imports db.models, it will trigger the same Python 3.6 failure you hit (the enterprise models use from __future__ import annotations).
+
+It’s also scoped to old tables, not your new log metadata tables.
+
+So: treat it as historical / seeding code. Don’t run it on Trex and don’t copy its pattern—it relies on importing the ORM models, which is exactly what we must avoid.
+
+What to do instead (works on Trex, no env.py edits)
+
+Use one of the two safe paths below (these avoid importing db.models):
+
+Option A — Your own tiny Alembic (best for audit trail)
+
+You already have the snippets from me; here’s the ultra-short reminder:
+
+Create a private tree:
+
+mkdir -p db_migrations_local/versions
+
+
+Add db_migrations_local/alembic.ini and db_migrations_local/env.py (the versions I gave you that do not import db.models and set target_metadata = None).
+
+Drop your explicit migration in db_migrations_local/versions/20251025_add_log_metadata.py using op.create_table(...) for:
+
+log_metadata_header
+
+log_metadata_attr
+
+Run:
+
+source .venv/bin/activate
+pip install pymysql
+export SQLALCHEMY_DATABASE_URI='mysql+pymysql://USER:PASSWORD@HOST:3306/DBNAME'
+python -m alembic -c db_migrations_local/alembic.ini upgrade head
+
+Option B — One-off DDL script (fastest)
+
+Create scripts/create_log_metadata_tables.py that executes raw SQL (the exact file I gave you earlier) and run it with the same SQLALCHEMY_DATABASE_URI. This avoids Alembic entirely and also avoids importing models.
+
+Quick sanity checks after creation
+
+Use either MySQL CLI or Python to verify:
+
+MySQL CLI
+
+SHOW TABLES LIKE 'log_metadata_header';
+SHOW TABLES LIKE 'log_metadata_attr';
+DESCRIBE log_metadata_header;
+DESCRIBE log_metadata_attr;
+
+
+Tiny Python smoke test (no ORM)
+
+from sqlalchemy import create_engine, text
+import os
+engine = create_engine(os.environ["SQLALCHEMY_DATABASE_URI"])
+
+with engine.begin() as conn:
+    # Should return 0 rows initially
+    r = conn.execute(text("SELECT COUNT(*) FROM log_metadata_header"))
+    print("headers:", list(r)[0][0])
+
+Optional: verify our repo function without touching models
+
+If you want to test the upsert logic you pasted (the metadata_repo.upsert_header_with_attrs) but can’t import your ORM models on Trex’s Python 3.6, just do a manual insert test:
+
+from sqlalchemy import create_engine, text
+import os, json
+
+engine = create_engine(os.environ["SQLALCHEMY_DATABASE_URI"])
+
+with engine.begin() as conn:
+    # assume you have a raw_data row id=123
+    conn.execute(text("""
+        INSERT INTO log_metadata_header (raw_data_id, log_uid, source_json, created_at, updated_at)
+        VALUES (:rid, :uid, :src, NOW(), NOW())
+        ON DUPLICATE KEY UPDATE updated_at=NOW()
+    """), {"rid": 123, "uid": "ECM_ABC_001", "src": json.dumps({"weather":"snow"})})
+
+    # add a couple attrs
+    conn.execute(text("""
+        INSERT IGNORE INTO log_metadata_attr (header_id, attr_key, attr_value, created_at, updated_at)
+        SELECT id, :k, :v, NOW(), NOW() FROM log_metadata_header WHERE raw_data_id=:rid
+    """), {"rid": 123, "k": "weather", "v": "snow"})
+
+    conn.execute(text("""
+        INSERT IGNORE INTO log_metadata_attr (header_id, attr_key, attr_value, created_at, updated_at)
+        SELECT id, :k, :v, NOW(), NOW() FROM log_metadata_header WHERE raw_data_id=:rid
+    """), {"rid": 123, "k": "site", "v": "Richmond"})
+
+
+That proves the tables are usable even without importing your enterprise models.
+
+Bottom line
+
+Don’t use the .bak script—it imports db.models and is for legacy CSV backfill.
+
+Pick Option A (your own Alembic) or Option B (DDL script). Both work on Trex without changing enterprise files or upgrading Python.
+
+After creation, do a quick insert/read to show progress, then reference that in your PR comment (“schema ready; test rows inserted; next: DAG/API”).
