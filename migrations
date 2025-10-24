@@ -1,0 +1,196 @@
+0) Prep (once per shell)
+
+From the repo root:
+
+# activate venv
+source .venv/bin/activate  ||  source venv/bin/activate
+
+# make sure deps are present
+python -m pip install --upgrade pip setuptools wheel
+python -m pip install -r requirements.txt
+
+
+Export your DB URL (use your normal dev DB):
+
+export SQLALCHEMY_DATABASE_URI='mysql+pymysql://USER:PASSWORD@HOST:3306/DBNAME'
+
+1) Apply the migration (creates the two tables)
+# run alembic from the repo root (where alembic.ini is)
+python -m alembic upgrade head
+# sanity: should not error
+python -m alembic current
+
+
+DB check (optional):
+
+-- in MySQL client
+SHOW TABLES LIKE 'log_metadata_%';
+-- expect: log_metadata_header, log_metadata_attr
+
+2) Seed a tiny example (no Airflow needed)
+
+Run this quick Python snippet to insert one header + a few attributes. It uses your enterprise Context and the new models.
+
+python - <<'PY'
+from datetime import datetime
+from db.context import Context
+from sqlalchemy.orm import Session
+from db.models import RawData
+from db.models import LogMetadataHeader, LogMetadataAttr  # <-- your new classes
+
+session: Session = Context().get_session()
+
+# attach to any existing raw_data (or set raw_id=None if your FK is nullable)
+raw = session.query(RawData.id).first()
+raw_id = raw.id if raw else None
+
+hdr = LogMetadataHeader(
+    raw_data_id=raw_id,
+    log_uid="demo-log-001",
+    created_at=datetime.utcnow(),
+    updated_at=datetime.utcnow(),
+    source_json={"seed":"true","note":"demo insert"}
+)
+session.add(hdr); session.flush()
+
+rows = [
+    LogMetadataAttr(header_id=hdr.id, attr_key="weather",      attr_value="snow"),
+    LogMetadataAttr(header_id=hdr.id, attr_key="condition",    attr_value="icy"),
+    LogMetadataAttr(header_id=hdr.id, attr_key="site",         attr_value="Peoria"),
+]
+session.add_all(rows); session.commit()
+print("Inserted header_id:", hdr.id, "raw_data_id:", raw_id)
+PY
+
+
+DB check (optional):
+
+SELECT id, log_uid, raw_data_id FROM log_metadata_header ORDER BY id DESC LIMIT 3;
+SELECT attr_key, attr_value FROM log_metadata_attr WHERE header_id=<printed id>;
+
+3) Run the API locally
+
+Use whichever entrypoint your repo uses. One of these will work; try in order:
+
+# A) common dev entry
+uvicorn api_dev:app --host 0.0.0.0 --port 8000 --reload
+
+# B) fallback main
+# uvicorn api:app --host 0.0.0.0 --port 8000 --reload
+
+# C) package style (if the app is nested)
+# uvicorn apis.v1.api:app --host 0.0.0.0 --port 8000 --reload
+
+
+Tip to discover the entrypoint fast:
+
+grep -R "FastAPI(" -n .
+
+4) Verify the feature with HTTP calls
+
+In a separate terminal:
+
+# query by an attribute you inserted
+curl -s "http://localhost:8000/v1/logs/metadata?key=weather&value=snow&limit=20"
+
+
+Expected shape (example):
+
+{
+  "count": 1,
+  "results": [
+    {"log_uid": "demo-log-001", "raw_data_id": 12345}
+  ]
+}
+
+
+Try a second key:
+
+curl -s "http://localhost:8000/v1/logs/metadata?key=site&value=Peoria"
+
+
+If you get an empty result:
+
+Make sure you seeded the exact key/value you’re querying.
+
+Confirm the API file is pointing to the same DB URL (env var).
+
+5) (Optional) Ingest from a JSON file like the future DAG would
+
+Create sample_metadata.json:
+
+{
+  "log_uid": "demo-log-002",
+  "raw_data_id": 12345,
+  "attributes": {
+    "weather": "sunny",
+    "condition": "dry",
+    "site": "Mossville"
+  }
+}
+
+
+Quick loader (you can keep this as scripts/ingest_one_metadata_json.py):
+
+python - <<'PY'
+import json, sys
+from datetime import datetime
+from db.context import Context
+from sqlalchemy.orm import Session
+from db.models import LogMetadataHeader, LogMetadataAttr
+
+path = "sample_metadata.json"
+data = json.load(open(path))
+session: Session = Context().get_session()
+
+hdr = LogMetadataHeader(
+    raw_data_id=data.get("raw_data_id"),
+    log_uid=data["log_uid"],
+    created_at=datetime.utcnow(),
+    updated_at=datetime.utcnow(),
+    source_json=data
+)
+session.add(hdr); session.flush()
+
+for k, v in (data.get("attributes") or {}).items():
+    session.add(LogMetadataAttr(header_id=hdr.id, attr_key=k, attr_value=str(v)))
+session.commit()
+print("ingested", hdr.id)
+PY
+
+
+Verify via API:
+
+curl -s "http://localhost:8000/v1/logs/metadata?key=weather&value=sunny"
+
+6) What to screenshot for the PR
+
+Terminal showing alembic upgrade head success.
+
+MySQL client (or logs) showing the two tables populated.
+
+curl response for at least one key/value (e.g., weather=snow or site=Peoria).
+
+API startup log (Uvicorn line) proving the service is running.
+
+7) Rollback (if asked)
+python -m alembic downgrade -1
+
+
+(drops the two tables; no impact to PTAG/RawData)
+
+Quick Troubleshooting
+
+alembic: command not found
+Use module form: python -m alembic upgrade head
+
+API can’t see the tables
+Ensure you exported the same SQLALCHEMY_DATABASE_URI in the shell where you run Uvicorn.
+
+Empty API results
+Confirm seed/ingest succeeded (SELECT the rows), and query the exact key/value you inserted.
+
+Port already in use
+Try --port 8010 (and hit that port in curl).
+
+If you paste any error output you hit in these steps, I’ll zero in on the fix immediately.
