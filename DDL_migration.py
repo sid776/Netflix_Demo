@@ -39,3 +39,10 @@ with engine.begin() as conn:
         if stmt.strip():
             conn.execute(text(stmt))
 print("Tables created/ensured.")
+
+
+source .venv/bin/activate
+pip install pymysql
+export SQLALCHEMY_DATABASE_URI='mysql+pymysql://USER:PASSWORD@HOST:3306/DBNAME'
+python scripts/create_log_metadata_tables.py
+
