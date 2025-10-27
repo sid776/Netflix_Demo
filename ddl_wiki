@@ -1,0 +1,89 @@
+Database Update
+
+Follow
+1
+
+Edit
+
+
+Peter Petrany
+Aug 23
+Database Update Wiki
+This page documents the standard procedures for updating our databases, including creating new tables, modifying existing columns, taking database snapshots, and verifying changes using Adminer. It also explains the differences between our dev, prod, and shareddev databases.
+
+1. Creating a New Table
+Update Models
+
+Edit db/models.py to add a new class representing your table.
+Define columns, types, and relationships as needed.
+Generate Alembic Revision
+
+In your dev-box, activate your virtual environment and navigate to the project root.
+Run:
+
+alembic revision --autogenerate -m "add <table_name> table"
+Apply Migration
+
+Upgrade the database schema:
+
+alembic upgrade head
+Verify Table Creation
+
+Use Adminer (see section 4) to confirm the new table exists.
+2. Modifying Columns in a Table
+Update Models
+
+Edit the relevant class in db/models.py to add, remove, or modify columns.
+Generate Alembic Revision
+
+Run:
+
+alembic revision --autogenerate -m "modify <table_name> columns"
+Apply Migration
+
+Upgrade the database:
+
+alembic upgrade head
+Verify Changes
+
+Use Adminer to inspect the table schema and confirm the changes.
+3. Taking a Snapshot of the Database
+MySQL Dump (recommended for dev/shareddev)
+
+From the dev-box or a machine with access, run:
+
+mysqldump -u <user> -p -h <host> <database> > snapshot_<date>.sql
+Store the snapshot securely.
+AWS RDS Snapshot (for prod)
+
+Snapshots in AWS happen automatically
+4. Using Adminer to Verify Table Contents
+Access Adminer
+
+Port-forward if needed:
+
+ssh -L <local_port>:trex:<adminer_port> <user>@<host>
+Open http://localhost:<local_port> in your browser.
+Login
+
+System: MySQL
+Server: (e.g., oss-db-service)
+Username/Password: (see dev-box/env)
+Database: cdcs (or as appropriate)
+Verify Table
+
+Select your table from the sidebar.
+Review schema and contents.
+Run SQL queries as needed.
+5. Differences Between dev, prod, and shareddev Databases
+Environment	Purpose	Typical Host/Instance Name	Usage Notes
+dev	Development and testing	oss-db-service or ics-data-pipeline-db-instance-dev	Safe for schema changes and testing
+prod	Production (live data)	ics-data-pipeline-db-instance-prod	Do not make direct changes without approval
+shareddev	Shared development (team integration)	ics-oss-aurora-mysql-dl-ue1-dev	Used for integration testing across teams
+dev: Used for feature development, safe for experiments.
+prod: Holds production data, changes require strict review.
+shareddev: Used for integration and shared testing, may be reset periodically.
+References:
+
+Development Environment Setup
+Adminer Tool 
