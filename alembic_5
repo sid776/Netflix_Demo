@@ -1,0 +1,157 @@
+You already added:
+
+class LogMetadataHeader
+
+class LogMetadataAttr
+
+So Step 1 is done.
+
+✅ This is what the wiki calls “Update Models”.
+
+✅ STEP 2 — Run migration in the devbox WITHOUT touching env.py
+
+This is the part you asked:
+
+“how to run migrations in devbox first?”
+
+✅ You simply use the same enterprise Alembic, but point to your dev database.
+
+You do NOT need env.py changes.
+You do NOT need Python 3.12.
+You do NOT modify anything.
+
+✅ On devbox terminal:
+cd <your-project-root>
+source .venv/bin/activate
+
+✅ Export the dev database URL
+
+This injects into enterprise env.py automatically — NO CHANGES NEEDED.
+
+export SQLALCHEMY_DATABASE_URI='mysql+pymysql://<dev_user>:<pass>@oss-db-service/cdcs'
+
+
+Check it:
+
+echo $SQLALCHEMY_DATABASE_URI
+
+✅ STEP 3 — AUTOGENERATE the Alembic revision (devbox)
+
+This uses the enterprise env.py and your updated models.py.
+
+alembic revision --autogenerate -m "add log metadata tables"
+
+
+💡 Because you added both model classes in models.py, autogenerate will detect:
+
+✅ create table log_metadata_header
+✅ create table log_metadata_attr
+✅ constraints
+✅ indexes
+
+✅ STEP 4 — Verify the migration file
+
+Open:
+
+db_versions/versions/<generated_file>.py
+
+
+Inside you should see:
+
+op.create_table('log_metadata_header', …)
+
+op.create_table('log_metadata_attr', …)
+
+If they show up: ✅ correct.
+
+If autogenerate missed something, I will fix the DDL for you — but normally it works.
+
+✅ STEP 5 — Apply the migration to the DEV database (devbox)
+
+This is the step your teammate meant by:
+
+✅ “Run migrations in devbox and test that works.”
+
+Run:
+
+alembic upgrade head
+
+
+This actually RUNS the create table statements on your dev database.
+
+✅ STEP 6 — Verify using Adminer
+
+As wiki says:
+
+✅ Go to Adminer
+✅ Check CDCS database
+✅ Look for:
+
+log_metadata_header
+
+log_metadata_attr
+
+✅ Confirm columns, constraints, indexes.
+
+If something is missing, I fix it.
+
+✅ STEP 7 — Commit revision + PR
+
+Once dev passes:
+
+git add db_versions/versions/<generated_file>.py
+git commit -m "Add log metadata tables"
+git push origin <your_branch>
+
+
+This answers your teammate’s last line:
+
+✅ “Once PR is merged then we can update alembic head using prod creds.”
+
+✅ THIS MEANS: Alembic DOES create the tables
+
+You asked:
+
+how is this creating the tables?
+
+Because:
+
+models.py defines the tables
+
+alembic autogenerate detects differences
+
+alembic upgrade executes CREATE TABLE statements
+
+The enterprise env.py is already configured to:
+
+✅ import db.models
+✅ compare metadata
+✅ apply changes
+
+You don’t need to modify env.py at all.
+
+✅ FULL SUMMARY — What YOU need to do NOW
+✅ 1. Models already updated (done)
+✅ 2. Run autogenerate in devbox:
+export SQLALCHEMY_DATABASE_URI='mysql+pymysql://<dev_user>:<pass>@oss-db-service/cdcs'
+alembic revision --autogenerate -m "add log metadata tables"
+
+✅ 3. Apply to devbox DB:
+alembic upgrade head
+
+✅ 4. Verify tables in Adminer
+✅ 5. Commit the generated migration + PR
+
+This exactly matches the wiki and the teammate's instructions.
+
+✅ If you want, paste your autogenerate output
+
+I will confirm:
+
+correct table definition
+
+correct constraints
+
+correct indexes
+
+correct naming per enterprise patterns
