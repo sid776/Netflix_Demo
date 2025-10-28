@@ -1,0 +1,60 @@
+"""add log_metadata_header & log_metadata_attr
+
+Revision ID: bcd9dce626d2
+Revises: acd4c38b79b9
+Create Date: 2025-10-22 19:27:57.727996
+
+"""
+from alembic import op
+import sqlalchemy as sa
+
+
+# revision identifiers, used by Alembic.
+revision = 'bcd9dce626d2'
+down_revision = 'acd4c38b79b9'
+branch_labels = None
+depends_on = None
+
+
+def upgrade():
+    op.create_table(
+        "log_metadata_header",
+        sa.Column("id", sa.Integer(), primary_key=True, autoincrement=True, nullable=False),
+        sa.Column("raw_data_id", sa.Integer(), sa.ForeignKey("raw_data.id"), nullable=False),
+        sa.Column("log_uid", sa.String(length=255), nullable=False),
+        sa.Column("created_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("updated_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("source_json", sa.JSON(), nullable=True),
+    )
+    op.create_index("ix_log_metadata_header_log_uid", "log_metadata_header", ["log_uid"])
+    op.create_index("ix_log_metadata_header_raw_data_id", "log_metadata_header", ["raw_data_id"])
+    op.create_unique_constraint("_log_metadata_header_raw_data_uc", "log_metadata_header", ["raw_data_id"])
+
+    op.create_table(
+        "log_metadata_attr",
+        sa.Column("id", sa.Integer(), primary_key=True, autoincrement=True, nullable=False),
+        sa.Column("header_id", sa.Integer(), sa.ForeignKey("log_metadata_header.id", ondelete="CASCADE"), nullable=False),
+        sa.Column("attr_key", sa.String(length=255), nullable=False),
+        sa.Column("attr_value", sa.String(length=1024), nullable=False),
+        sa.Column("created_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("updated_at", sa.DateTime(timezone=True), nullable=True),
+    )
+    op.create_index("ix_log_metadata_attr_key", "log_metadata_attr", ["attr_key"])
+    op.create_index("ix_log_metadata_attr_value", "log_metadata_attr", ["attr_value"])
+    op.create_unique_constraint(
+        "_log_metadata_attr_uc",
+        "log_metadata_attr",
+        ["header_id", "attr_key", "attr_value"],
+    )
+
+def downgrade():
+    op.drop_constraint("_log_metadata_attr_uc", "log_metadata_attr", type_="unique")
+    op.drop_index("ix_log_metadata_attr_value", table_name="log_metadata_attr")
+    op.drop_index("ix_log_metadata_attr_key", table_name="log_metadata_attr")
+    op.drop_table("log_metadata_attr")
+
+    op.drop_constraint("_log_metadata_header_raw_data_uc", "log_metadata_header", type_="unique")
+    op.drop_index("ix_log_metadata_header_raw_data_id", table_name="log_metadata_header")
+    op.drop_index("ix_log_metadata_header_log_uid", table_name="log_metadata_header")
+    op.drop_table("log_metadata_header")
+
