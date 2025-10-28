@@ -1,0 +1,186 @@
+1) Add tiny smoke scripts (seed + query)
+
+Create two small scripts so you can insert a header + attributes, then query them. These don’t add any new deps and run on py3.6.
+
+scripts/seed_log_metadata.py
+
+# -*- coding: utf-8 -*-
+import os
+from sqlalchemy.orm import Session
+from db.context import Context
+from db.models import LogMetadataHeader, LogMetadataAttr
+
+def seed_one(session, raw_data_id, log_uid, attrs, source_json=None):
+    # header: 1 row per log (linked to raw_data.id)
+    header = (session.query(LogMetadataHeader)
+              .filter(LogMetadataHeader.raw_data_id == raw_data_id)
+              .one_or_none())
+    if header is None:
+        header = LogMetadataHeader(raw_data_id=raw_data_id, log_uid=log_uid, source_json=source_json)
+        session.add(header)
+        session.flush()
+
+    # de-dup (header_id, key, value)
+    existing = set((a.attr_key, a.attr_value)
+                   for a in session.query(LogMetadataAttr).filter(LogMetadataAttr.header_id == header.id))
+
+    added = 0
+    for k, v in attrs.items():
+        if (k, v) in existing:
+            continue
+        session.add(LogMetadataAttr(header_id=header.id, attr_key=k, attr_value=v))
+        added += 1
+    return header.id, added
+
+if __name__ == "__main__":
+    # DB comes from env the same way alembic/env.py reads it
+    conn = os.getenv("SQLALCHEMY_DATABASE_URI")
+    if not conn:
+        raise SystemExit("Set SQLALCHEMY_DATABASE_URI")
+
+    ctx = Context()
+    ctx.init_session(conn)
+    s = ctx.get_session()  # type: Session
+
+    # --- change these two for your dev data ---
+    RAW_DATA_ID = 1234      # any existing raw_data.id in dev
+    LOG_UID = "ecm_2025_10_28_demo_001"
+    ATTRS = {"weather": "snow", "country": "US", "speed_bucket": "0-5"}
+    SRC = {"note": "seeded by smoke script"}
+
+    with ctx.session_scope():
+        hid, n = seed_one(s, RAW_DATA_ID, LOG_UID, ATTRS, SRC)
+        print("header_id:", hid, "new_attr_rows:", n)
+
+
+scripts/search_log_metadata.py
+
+# -*- coding: utf-8 -*-
+import os
+from sqlalchemy.orm import Session
+from db.context import Context
+from db.models import LogMetadataHeader, LogMetadataAttr
+
+def search(session, key, value, limit=50):
+    q = (session.query(LogMetadataHeader.log_uid, LogMetadataHeader.raw_data_id)
+         .join(LogMetadataAttr, LogMetadataAttr.header_id == LogMetadataHeader.id)
+         .filter(LogMetadataAttr.attr_key == key, LogMetadataAttr.attr_value == value)
+         .limit(limit))
+    return [{"log_uid": r[0], "raw_data_id": r[1]} for r in q.all()]
+
+if __name__ == "__main__":
+    conn = os.getenv("SQLALCHEMY_DATABASE_URI")
+    if not conn:
+        raise SystemExit("Set SQLALCHEMY_DATABASE_URI")
+
+    key = os.getenv("LM_KEY", "weather")
+    val = os.getenv("LM_VAL", "snow")
+
+    ctx = Context()
+    ctx.init_session(conn)
+    s = ctx.get_session()  # type: Session
+
+    out = search(s, key, val)
+    print({"count": len(out), "results": out})
+
+
+Run them:
+
+# same DB URI you used for alembic
+export SQLALCHEMY_DATABASE_URI='mysql+pymysql://<user>:<pass>@oss-db-service/cdcs'
+
+# insert one demo row + attributes
+python scripts/seed_log_metadata.py
+
+# verify we can search by attribute
+python scripts/search_log_metadata.py
+# optional: change query
+LM_KEY=speed_bucket LM_VAL=0-5 python scripts/search_log_metadata.py
+
+####################################################################
+Add a tiny read-only endpoint so people can try it from the browser or curl.
+
+#apis/v1/logs_metadata_api.py
+# -*- coding: utf-8 -*-
+from flask import Blueprint, request, jsonify
+from db.context import Context
+from db.models import LogMetadataHeader, LogMetadataAttr
+
+bp = Blueprint("logs_metadata", __name__, url_prefix="/logs/metadata")
+
+def get_db():
+    return Context().get_session()
+
+@bp.route("/search", methods=["GET"])
+def search():
+    key = request.args.get("key")
+    value = request.args.get("value")
+    limit = int(request.args.get("limit", 100))
+    if not key or not value:
+        return jsonify({"error": "key and value are required"}), 400
+
+    db = get_db()
+    q = (db.query(LogMetadataHeader.log_uid, LogMetadataHeader.raw_data_id)
+           .join(LogMetadataAttr, LogMetadataAttr.header_id == LogMetadataHeader.id)
+           .filter(LogMetadataAttr.attr_key == key,
+                   LogMetadataAttr.attr_value == value)
+           .limit(limit))
+    rows = [{"log_uid": r[0], "raw_data_id": r[1]} for r in q.all()]
+    return jsonify({"count": len(rows), "results": rows})
+
+ ################################################################################################           #
+#unit test   
+# -*- coding: utf-8 -*-
+import os
+from db.context import Context
+from db.models import LogMetadataHeader, LogMetadataAttr
+from sqlalchemy.orm import Session
+
+def test_roundtrip_insert_and_search():
+    conn = os.getenv("SQLALCHEMY_DATABASE_URI")
+    assert conn, "SQLALCHEMY_DATABASE_URI must be set for dev test"
+
+    ctx = Context()
+    ctx.init_session(conn)
+    s = ctx.get_session()  # type: Session
+
+    RAW_ID = 999999  # use a safe dummy or an existing dev id
+    # create header
+    with ctx.session_scope():
+        h = LogMetadataHeader(raw_data_id=RAW_ID, log_uid="unit_test_uid")
+        s.add(h); s.flush()
+        s.add(LogMetadataAttr(header_id=h.id, attr_key="phase", attr_value="alpha"))
+
+    # query
+    rows = (s.query(LogMetadataHeader.log_uid)
+            .join(LogMetadataAttr, LogMetadataAttr.header_id == LogMetadataHeader.id)
+            .filter(LogMetadataAttr.attr_key == "phase",
+                    LogMetadataAttr.attr_value == "alpha")
+            .all())
+    assert any(r[0] == "unit_test_uid" for r in rows)
+ ###############################################################################################################
+ # 0) in trex devbox
+source .venv/bin/activate
+export SQLALCHEMY_DATABASE_URI='mysql+pymysql://<user>:<pass>@oss-db-service/cdcs'
+
+# 1) apply schema
+alembic upgrade head
+
+# 2) seed one example (uses Context under the hood)
+python scripts/seed_log_metadata.py
+
+# 3) verify search via CLI
+python scripts/search_log_metadata.py
+# or change query:
+LM_KEY=weather LM_VAL=snow python scripts/search_log_metadata.py
+
+# 4) if you wired the Flask route:
+# run your dev server, then hit:
+curl "http://localhost:9999/logs/metadata/search?key=weather&value=snow"
+
+###########################################################################################################
+ “Added two parallel tables (log_metadata_header, log_metadata_attr) to tag logs with flexible key/values without touching PTAG.”
+
+“Migration runs on Trex devbox; verified with seed + search scripts and Adminer.”
+
+“Next: add a small Flask /logs/metadata/search endpoint and build an Airflow DAG to ingest JSON → tables.”
