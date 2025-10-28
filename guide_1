@@ -1,0 +1,39 @@
+Database Update Wiki
+This page documents the standard procedures for updating our databases, including creating new tables, modifying existing columns, taking database snapshots, and verifying changes using Adminer. It also explains the differences between our dev, prod, and shareddev databases.
+
+1. Creating a New Table
+Update Models
+
+Edit db/models.py to add a new class representing your table.
+Define columns, types, and relationships as needed.
+Generate Alembic Revision
+
+In your dev-box, activate your virtual environment and navigate to the project root.
+Run:
+
+alembic revision --autogenerate -m "add <table_name> table"
+Apply Migration
+
+Upgrade the database schema:
+
+alembic upgrade head
+Verify Table Creation
+
+Use Adminer (see section 4) to confirm the new table exists.
+2. Modifying Columns in a Table
+Update Models
+
+Edit the relevant class in db/models.py to add, remove, or modify columns.
+Generate Alembic Revision
+
+Run:
+
+alembic revision --autogenerate -m "modify <table_name> columns"
+Apply Migration
+
+Upgrade the database:
+
+alembic upgrade head
+Verify Changes
+
+Use Adminer to inspect the table schema and confirm the changes.
