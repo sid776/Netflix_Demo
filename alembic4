@@ -1,0 +1,168 @@
+A) Run the migration on the devbox (safe/local runner)
+
+We’ll use a tiny local Alembic runner that doesn’t import db.models (so Python 3.6 is fine). It only needs your DB URL and the explicit DDL.
+
+1) Prep
+cd /path/to/your/repo
+source .venv/bin/activate
+pip install "alembic==1.5.*"  # works on py3.6
+
+# dev DB URI from your env/wiki
+export SQLALCHEMY_DATABASE_URI='mysql+pymysql://<user>:<pass>@oss-db-service/cdcs'
+
+2) Create a local runner (one-time)
+mkdir -p local_migrations/versions
+
+
+local_migrations/alembic.ini
+
+[alembic]
+script_location = local_migrations
+prepend_sys_path = .
+sqlalchemy.url = %(SQLALCHEMY_DATABASE_URI)s
+
+
+local_migrations/env.py
+
+from logging.config import fileConfig
+from sqlalchemy import engine_from_config, pool
+from alembic import context
+import os
+
+config = context.config
+section = config.config_ini_section
+config.set_section_option(section, "SQLALCHEMY_DATABASE_URI",
+                          os.environ.get("SQLALCHEMY_DATABASE_URI", ""))
+
+if config.config_file_name:
+    fileConfig(config.config_file_name)
+
+def run_migrations_offline():
+    url = config.get_main_option("sqlalchemy.url")
+    context.configure(url=url, literal_binds=True, dialect_opts={"paramstyle": "named"})
+    with context.begin_transaction():
+        context.run_migrations()
+
+def run_migrations_online():
+    connectable = engine_from_config(
+        config.get_section(config.config_ini_section),
+        prefix="sqlalchemy.",
+        poolclass=pool.NullPool,
+    )
+    with connectable.connect() as connection:
+        context.configure(connection=connection)
+        with context.begin_transaction():
+            context.run_migrations()
+
+if context.is_offline_mode():
+    run_migrations_offline()
+else:
+    run_migrations_online()
+
+3) Create a manual revision (we’ll paste the DDL)
+alembic -c local_migrations/alembic.ini revision -m "add log metadata tables"
+
+
+Open the new file under local_migrations/versions/xxxx_add_log_metadata_tables.py and replace its contents with:
+
+"""add log metadata tables"""
+
+from alembic import op
+import sqlalchemy as sa
+
+revision = "add_log_meta_v1"
+down_revision = None
+branch_labels = None
+depends_on = None
+
+def upgrade():
+    op.create_table(
+        "log_metadata_header",
+        sa.Column("id", sa.Integer(), primary_key=True, autoincrement=True, nullable=False),
+        sa.Column("raw_data_id", sa.Integer(), sa.ForeignKey("raw_data.id"), nullable=False, index=True),
+        sa.Column("log_uid", sa.String(255), nullable=False, index=True),
+        sa.Column("created_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("updated_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("source_json", sa.JSON, nullable=True),
+        sa.UniqueConstraint("raw_data_id", name="_log_metadata_header_raw_data_uc"),
+        mysql_charset="utf8mb4",
+        mysql_engine="InnoDB",
+    )
+    op.create_index("ix_log_metadata_header_raw_data_id", "log_metadata_header", ["raw_data_id"])
+    op.create_index("ix_log_metadata_header_log_uid", "log_metadata_header", ["log_uid"])
+
+    op.create_table(
+        "log_metadata_attr",
+        sa.Column("id", sa.Integer(), primary_key=True, autoincrement=True, nullable=False),
+        sa.Column("header_id", sa.Integer(), sa.ForeignKey("log_metadata_header.id", ondelete="CASCADE"), nullable=False, index=True),
+        sa.Column("attr_key", sa.String(255), nullable=False, index=True),
+        sa.Column("attr_value", sa.String(1024), nullable=False, index=True),
+        sa.Column("created_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("updated_at", sa.DateTime(timezone=True), nullable=True),
+        sa.UniqueConstraint("header_id", "attr_key", "attr_value", name="_log_metadata_attr_uc"),
+        mysql_charset="utf8mb4",
+        mysql_engine="InnoDB",
+    )
+    op.create_index("ix_log_metadata_attr_header_id", "log_metadata_attr", ["header_id"])
+    op.create_index("ix_log_metadata_attr_key", "log_metadata_attr", ["attr_key"])
+    op.create_index("ix_log_metadata_attr_value", "log_metadata_attr", ["attr_value"])
+
+def downgrade():
+    op.drop_index("ix_log_metadata_attr_value", table_name="log_metadata_attr")
+    op.drop_index("ix_log_metadata_attr_key", table_name="log_metadata_attr")
+    op.drop_index("ix_log_metadata_attr_header_id", table_name="log_metadata_attr")
+    op.drop_table("log_metadata_attr")
+
+    op.drop_index("ix_log_metadata_header_log_uid", table_name="log_metadata_header")
+    op.drop_index("ix_log_metadata_header_raw_data_id", table_name="log_metadata_header")
+    op.drop_table("log_metadata_header")
+
+4) Apply it on the dev DB
+alembic -c local_migrations/alembic.ini upgrade head
+
+
+You should see Alembic “Running upgrade …”.
+
+5) Verify quickly
+mysql -u <user> -p -h oss-db-service -e "USE cdcs; SHOW TABLES LIKE 'log_metadata%'; DESCRIBE log_metadata_header; DESCRIBE log_metadata_attr;"
+
+
+(or check in Adminer as per wiki).
+
+✅ At this point you’ve “run migrations in devbox and tested that it works.”
+
+B) Create the revision to push with your PR
+
+The enterprise runner expects revisions in db_versions/versions/. So copy the same revision file you just used:
+
+# copy your tested DDL revision into the repo’s official migrations folder
+cp local_migrations/versions/xxxx_add_log_metadata_tables.py db_versions/versions/bcd9dce626d2_add_log_metadata_header_log_metadata_attr.py
+
+
+Keep the file name consistent with your branch’s earlier naming if you already committed one.
+
+Ensure the revision and down_revision headers chain properly with your repo’s current head (if there is a head, set down_revision to that value).
+
+Then:
+
+git add db_versions/versions/*.py
+git commit -m "Add log_metadata_header and log_metadata_attr (tested on devbox)"
+git push origin <your-branch>
+
+
+Your PR now includes the migration and you’ve validated it on the devbox DB.
+
+Rollback (if you need to reset dev)
+alembic -c local_migrations/alembic.ini downgrade -1
+
+Smoke insert (optional)
+
+Use your metadata_repo.upsert_header_with_attrs helper to insert one header + attrs and confirm rows appear; or do a simple SQL insert as shown earlier.
+
+This flow matches the teammate’s guidance exactly:
+
+Run migration on devbox → verify
+
+Add the migration file to the repo → push with PR
+
+No enterprise files modified, no Python upgrades needed.
