@@ -1,0 +1,18 @@
+4. Using Adminer to Verify Table Contents
+Access Adminer
+
+Port-forward if needed:
+
+ssh -L <local_port>:trex:<adminer_port> <user>@<host>
+Open http://localhost:<local_port> in your browser.
+Login
+
+System: MySQL
+Server: (e.g., oss-db-service)
+Username/Password: (see dev-box/env)
+Database: cdcs (or as appropriate)
+Verify Table
+
+Select your table from the sidebar.
+Review schema and contents.
+Run SQL queries as needed.
