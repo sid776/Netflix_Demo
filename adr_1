@@ -1,0 +1,101 @@
+Here are exact step-by-step instructions to open Adminer from your Trex box, using the same style as your project wiki.
+
+✅ This will allow you to directly inspect log_metadata_header, log_metadata_attr, and confirm your seed data.
+
+✅ 1. Find Adminer Port on Trex
+
+On most Caterpillar / AT&T Trex dev-boxes, Adminer runs on:
+
+localhost:8080
+
+
+But sometimes:
+
+8081, 8082, or 8090
+
+
+Run this on Trex:
+
+sudo netstat -tulpn | grep adminer
+
+
+Or check running containers:
+
+docker ps | grep adminer
+
+
+Expected output example:
+
+0.0.0.0:8080->8080/tcp   adminer
+
+
+✅ So Adminer is at port 8080 on Trex.
+
+✅ 2. SSH Port Forward From Your Windows Machine
+
+Open PowerShell on your Windows laptop:
+
+ssh -L 8080:localhost:8080 jenas7@10.224.82.10
+
+
+Meaning:
+
+Left 8080 = your local laptop port
+
+Middle localhost:8080 = Adminer running on Trex
+
+jenas7@10.224.82.10 = your Trex login
+
+If Adminer is on a different port (8081, 8090), run:
+
+ssh -L 8080:localhost:<ADMINER_PORT> jenas7@10.224.82.10
+
+
+Example:
+
+ssh -L 8080:localhost:8090 jenas7@10.224.82.10
+
+
+✅ Keep this SSH window open.
+If you close it, the tunnel stops.
+
+✅ 3. Open Adminer in Browser
+
+Now open:
+
+👉 http://localhost:8080
+
+You should see the Adminer login screen.
+
+✅ 4. Login Credentials
+
+Use the ones from your dev-box environment (~/dev-box/env, or /opt/db-service/config.env).
+
+Typically:
+
+System: MySQL
+Server: oss-db-service
+Database: cdcs
+
+
+User / Password are stored here:
+
+cat ~/dev-box/env
+
+
+Look for lines like:
+
+MYSQL_USER=awsadmin
+MYSQL_PASSWORD=Initialpwdxxxxxxx
+MYSQL_DATABASE=cdcs
+MYSQL_HOST=oss-db-service
+
+
+Use these in Adminer:
+
+Field	Value
+System	MySQL
+Server	oss-db-service
+Username	awsadmin
+Password	Initialpwdxxxxxxx
+Database	cdcs
